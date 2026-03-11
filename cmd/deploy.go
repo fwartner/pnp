@@ -152,14 +152,29 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		fmt.Println(successStyle.Render("Changes pushed to gitops repo"))
 	}
 
-	// 10. Generate GitHub Actions workflow if requested
-	if flagWithCI {
-		fmt.Println(titleStyle.Render("Generating GitHub Actions workflow..."))
+	// 10. Generate GitHub Actions workflow and Dockerfile
+	ciDir := filepath.Join(cwd, ".github", "workflows")
+	workflowExists := false
+	if _, err := os.Stat(filepath.Join(ciDir, "deploy.yml")); err == nil {
+		workflowExists = true
+	}
+
+	if !workflowExists || flagWithCI {
+		fmt.Println(titleStyle.Render("Generating CI/CD pipeline..."))
 		if err := ci.GenerateWorkflow(projCfg.Type, projCfg.Image, cwd); err != nil {
 			fmt.Println(errorStyle.Render("Failed to generate CI workflow: " + err.Error()))
 			return err
 		}
 		fmt.Println(successStyle.Render("GitHub Actions workflow generated at .github/workflows/deploy.yml"))
+
+		dockerfilePath := filepath.Join(cwd, "Dockerfile")
+		if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
+			if err := ci.GenerateDockerfile(projCfg.Type, projCfg.Octane, cwd); err != nil {
+				fmt.Println(errorStyle.Render("Failed to generate Dockerfile: " + err.Error()))
+				return err
+			}
+			fmt.Println(successStyle.Render("Dockerfile generated"))
+		}
 	}
 
 	// 11. Save .cluster.yaml if not existing
