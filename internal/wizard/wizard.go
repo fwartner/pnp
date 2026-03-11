@@ -11,12 +11,14 @@ import (
 
 var projectTypes = []string{"laravel-web", "laravel-api", "nextjs-fullstack", "nextjs-static", "strapi"}
 var environments = []string{"preview", "staging", "production"}
+var scopes = []string{"customer", "private", "agency"}
 var octaneServers = []string{"frankenphp", "swoole", "roadrunner"}
 
 // Run executes the interactive wizard and returns a filled ProjectConfig.
 func Run(detected detect.DetectionResult, inferredImage string, projectName string, globalCfg config.GlobalConfig) (config.ProjectConfig, error) {
 	cfg := config.ProjectConfig{
 		Name:        projectName,
+		Scope:       "customer",
 		Type:        detected.Type,
 		Environment: "preview",
 		Image:       inferredImage,
@@ -50,19 +52,24 @@ func Run(detected detect.DetectionResult, inferredImage string, projectName stri
 			Enabled: true,
 			Size:    "5Gi",
 		},
-		Infisical: config.ProjectInfisical{
-			ProjectSlug: "customer-apps-f-jq3",
-			EnvSlug:     "prod",
-		},
 		Resources: config.ResourcesConfig{
 			CPU:    "100m",
 			Memory: "256Mi",
 		},
 	}
 
-	// Step 1: Basic info
+	// Step 1: Scope and basic info
 	err := huh.NewForm(
 		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Project scope").
+				Description("Determines default org, domain, visibility, and Infisical project").
+				Options(
+					huh.NewOption("Customer project", "customer"),
+					huh.NewOption("Private / internal project", "private"),
+					huh.NewOption("Agency project (Pixel & Process)", "agency"),
+				).
+				Value(&cfg.Scope),
 			huh.NewInput().
 				Title("Project name").
 				Value(&cfg.Name),
@@ -81,8 +88,22 @@ func Run(detected detect.DetectionResult, inferredImage string, projectName stri
 		return cfg, err
 	}
 
+	// Apply scope-based defaults.
+	scopeDomain := globalCfg.EffectiveDomain(cfg.Scope)
+	scopeRegistry := globalCfg.EffectiveImageRegistry(cfg.Scope)
+	scopeOrg := globalCfg.EffectiveGithubOrg(cfg.Scope)
+	scopeInfisicalSlug := globalCfg.EffectiveInfisicalProjectSlug(cfg.Scope)
+
+	cfg.Domain = defaultDomain(cfg.Name, cfg.Environment, scopeDomain)
+	cfg.Infisical.ProjectSlug = scopeInfisicalSlug
+	cfg.Infisical.EnvSlug = "prod"
+
+	// Build image from scope-specific org/registry if not already inferred.
+	if cfg.Image == "" && scopeOrg != "" {
+		cfg.Image = scopeRegistry + "/" + scopeOrg + "/" + cfg.Name
+	}
+
 	// Step 2: Domain and image
-	cfg.Domain = defaultDomain(cfg.Name, cfg.Environment, globalCfg.Defaults.Domain)
 	err = huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
@@ -171,7 +192,6 @@ func Run(detected detect.DetectionResult, inferredImage string, projectName stri
 
 	// Step 5: Laravel features — Horizon, Reverb, Octane
 	if isLaravel(cfg.Type) {
-		// Auto-detect features from composer.json
 		cwd := "."
 		features := detect.DetectLaravelFeatures(cwd)
 		if features.Horizon {
@@ -196,26 +216,19 @@ func Run(detected detect.DetectionResult, inferredImage string, projectName stri
 			if features.Octane {
 				detected = append(detected, "Octane")
 			}
-			featureDesc = fmt.Sprintf("Detected: %s", strings.Join(detected, ", "))
-		}
-
-		horizonTitle := "Enable Laravel Horizon?"
-		reverbTitle := "Enable Laravel Reverb (WebSockets)?"
-		octaneTitle := "Enable Laravel Octane?"
-		if featureDesc != "" {
-			horizonTitle += " (" + featureDesc + ")"
+			featureDesc = fmt.Sprintf(" (Detected: %s)", strings.Join(detected, ", "))
 		}
 
 		err = huh.NewForm(
 			huh.NewGroup(
 				huh.NewConfirm().
-					Title(horizonTitle).
+					Title("Enable Laravel Horizon?" + featureDesc).
 					Value(&cfg.Horizon.Enabled),
 				huh.NewConfirm().
-					Title(reverbTitle).
+					Title("Enable Laravel Reverb (WebSockets)?").
 					Value(&cfg.Reverb.Enabled),
 				huh.NewConfirm().
-					Title(octaneTitle).
+					Title("Enable Laravel Octane?").
 					Value(&cfg.Octane.Enabled),
 			),
 		).Run()
@@ -223,7 +236,6 @@ func Run(detected detect.DetectionResult, inferredImage string, projectName stri
 			return cfg, err
 		}
 
-		// Horizon replaces the default queue worker
 		if cfg.Horizon.Enabled {
 			cfg.Queue.Enabled = false
 		}

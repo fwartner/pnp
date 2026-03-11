@@ -59,12 +59,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 2. Ensure git repo and GitHub remote exist
-	if err := ensureGitRepo(cwd, globalCfg); err != nil {
-		return err
-	}
-
-	// 3. Check for existing .cluster.yaml
+	// 2. Check for existing .cluster.yaml
 	var projCfg config.ProjectConfig
 	existingConfig := false
 
@@ -73,7 +68,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		existingConfig = true
 		fmt.Println(successStyle.Render("Found existing .cluster.yaml"))
 	} else {
-		// 4. No .cluster.yaml: detect, infer, run wizard
+		// 3. No .cluster.yaml: detect, infer, run wizard
 		fmt.Println(titleStyle.Render("Detecting project type..."))
 		detected := detect.DetectProjectType(cwd)
 		fmt.Printf("  Detected: %s (%s confidence)\n", detected.Type, detected.Confidence)
@@ -87,6 +82,11 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			fmt.Println(errorStyle.Render("Wizard failed: " + err.Error()))
 			return err
 		}
+	}
+
+	// 4. Ensure git repo and GitHub remote exist (uses scope for defaults)
+	if err := ensureGitRepo(cwd, projCfg.Scope, globalCfg); err != nil {
+		return err
 	}
 
 	// 4. Build TemplateData
@@ -209,8 +209,8 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 }
 
 // ensureGitRepo checks if the current directory has a git repo with a GitHub remote.
-// If not, it offers to create one using the gh CLI.
-func ensureGitRepo(dir string, globalCfg config.GlobalConfig) error {
+// If not, it offers to create one using the gh CLI. Uses scope-based defaults for org and visibility.
+func ensureGitRepo(dir string, scope string, globalCfg config.GlobalConfig) error {
 	if gh.HasGitRepo(dir) && gh.HasGitRemote(dir) {
 		return nil // all good
 	}
@@ -246,7 +246,7 @@ func ensureGitRepo(dir string, globalCfg config.GlobalConfig) error {
 	}
 
 	projectName := filepath.Base(dir)
-	org := globalCfg.Defaults.GithubOrg
+	org := globalCfg.EffectiveGithubOrg(scope)
 
 	var repoName string
 	if org != "" {
@@ -255,7 +255,8 @@ func ensureGitRepo(dir string, globalCfg config.GlobalConfig) error {
 		repoName = projectName
 	}
 
-	var repoVisibility string
+	repoVisibility := globalCfg.EffectiveRepoVisibility(scope)
+
 	err = huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
@@ -263,6 +264,7 @@ func ensureGitRepo(dir string, globalCfg config.GlobalConfig) error {
 				Value(&repoName),
 			huh.NewSelect[string]().
 				Title("Visibility").
+				Description(fmt.Sprintf("Default for %s scope: %s", scope, repoVisibility)).
 				Options(
 					huh.NewOption("Private", "private"),
 					huh.NewOption("Public", "public"),

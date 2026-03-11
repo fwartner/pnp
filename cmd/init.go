@@ -87,6 +87,65 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Group 4: Scope profiles
+	var configureProfiles bool
+	err = huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Configure scope profiles?").
+				Description("Set per-scope overrides for customer, private, and agency projects").
+				Value(&configureProfiles),
+		),
+	).Run()
+	if err != nil {
+		fmt.Println(errorStyle.Render("Form cancelled: " + err.Error()))
+		return err
+	}
+
+	if configureProfiles {
+		if cfg.Profiles == nil {
+			cfg.Profiles = make(map[string]config.ProfileConfig)
+		}
+
+		for _, scope := range []string{"customer", "private", "agency"} {
+			profile := cfg.Profiles[scope]
+
+			err = huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().
+						Title(fmt.Sprintf("[%s] GitHub org/user", scope)).
+						Description("Leave empty to use global default").
+						Value(&profile.GithubOrg),
+					huh.NewInput().
+						Title(fmt.Sprintf("[%s] Domain", scope)).
+						Description("Leave empty to use global default").
+						Value(&profile.Domain),
+					huh.NewInput().
+						Title(fmt.Sprintf("[%s] Image registry", scope)).
+						Description("Leave empty to use global default").
+						Value(&profile.ImageRegistry),
+					huh.NewSelect[string]().
+						Title(fmt.Sprintf("[%s] Default repo visibility", scope)).
+						Options(
+							huh.NewOption("Private", "private"),
+							huh.NewOption("Public", "public"),
+						).
+						Value(&profile.RepoVisibility),
+					huh.NewInput().
+						Title(fmt.Sprintf("[%s] Infisical project slug", scope)).
+						Description("Leave empty to use global default").
+						Value(&profile.InfisicalProjectSlug),
+				),
+			).Run()
+			if err != nil {
+				fmt.Println(errorStyle.Render("Form cancelled: " + err.Error()))
+				return err
+			}
+
+			cfg.Profiles[scope] = profile
+		}
+	}
+
 	// Save config
 	if err := config.SaveGlobalConfig(cfg); err != nil {
 		fmt.Println(errorStyle.Render("Failed to save config: " + err.Error()))

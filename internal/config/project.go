@@ -9,6 +9,7 @@ import (
 
 type ProjectConfig struct {
 	Name        string            `yaml:"name"`
+	Scope       string            `yaml:"scope"` // customer, private, agency
 	Type        string            `yaml:"type"`
 	Environment string            `yaml:"environment"`
 	Domain      string            `yaml:"domain"`

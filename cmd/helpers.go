@@ -34,11 +34,13 @@ func buildTemplateData(projCfg config.ProjectConfig, globalCfg config.GlobalConf
 		persistenceSize = "5Gi"
 	}
 
+	scopeDomain := globalCfg.EffectiveDomain(projCfg.Scope)
+
 	return templates.TemplateData{
 		Name:      projCfg.Name,
 		Namespace: namespace,
-		Subdomain: wizard.Subdomain(projCfg.Domain, globalCfg.Defaults.Domain),
-		Domain:    globalCfg.Defaults.Domain,
+		Subdomain: wizard.Subdomain(projCfg.Domain, scopeDomain),
+		Domain:    scopeDomain,
 		Image:     projCfg.Image,
 		Tag:       "latest",
 		DBName:    projCfg.Database.Name,
