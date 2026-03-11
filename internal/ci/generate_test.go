@@ -109,11 +109,7 @@ func TestGenerateDockerfile_Laravel(t *testing.T) {
 	content := string(data)
 
 	for _, want := range []string{
-		"php:8.3-fpm-alpine",
-		"nginx",
-		"supervisor",
-		"pdo_pgsql",
-		"redis",
+		"ghcr.io/fwartner/pnp/laravel-fpm:latest",
 		"composer",
 		"npm run build",
 		"storage/framework",
@@ -150,7 +146,7 @@ func TestGenerateDockerfile_LaravelOctaneFrankenPHP(t *testing.T) {
 	content := string(data)
 
 	for _, want := range []string{
-		"dunglas/frankenphp",
+		"ghcr.io/fwartner/pnp/laravel-frankenphp:latest",
 		"octane:start",
 		"--server=frankenphp",
 		"EXPOSE 8000",
@@ -191,7 +187,7 @@ func TestGenerateDockerfile_LaravelOctaneRoadrunner(t *testing.T) {
 	}
 	content := string(data)
 
-	for _, want := range []string{"--server=roadrunner", "roadrunner-server/roadrunner"} {
+	for _, want := range []string{"--server=roadrunner", "ghcr.io/fwartner/pnp/laravel-roadrunner:latest"} {
 		if !strings.Contains(content, want) {
 			t.Errorf("RoadRunner Dockerfile should contain %q", want)
 		}
