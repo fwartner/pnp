@@ -7,52 +7,29 @@ import (
 	"text/template"
 )
 
-const workflowTemplate = `name: Deploy
+const workflowTemplate = `name: Build & Push
 
 on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  packages: write
+
 env:
   IMAGE: {{ .Image }}
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
-{{ if .IsLaravel }}
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: "8.3"
 
-      - name: Install Composer dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Build assets
-        run: npm run build
-{{ end }}{{ if .IsNode }}
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Install npm dependencies
-        run: npm ci
-
-      - name: Build
-        run: npm run build
-{{ end }}
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -60,20 +37,28 @@ jobs:
           username: ${{ "{{" }} github.actor {{ "}}" }}
           password: ${{ "{{" }} secrets.GITHUB_TOKEN {{ "}}" }}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ "{{" }} env.IMAGE {{ "}}" }}
+          tags: |
+            type=sha
+            type=raw,value=latest,enable=${{ "{{" }} github.ref == format('refs/heads/{0}', 'main') {{ "}}" }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: |
-            ${{ "{{" }} env.IMAGE {{ "}}" }}:${{ "{{" }} github.sha {{ "}}" }}
-            ${{ "{{" }} env.IMAGE {{ "}}" }}:latest
+          tags: ${{ "{{" }} steps.meta.outputs.tags {{ "}}" }}
+          labels: ${{ "{{" }} steps.meta.outputs.labels {{ "}}" }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 `
 
 type workflowData struct {
-	Image     string
-	IsLaravel bool
-	IsNode    bool
+	Image string
 }
 
 // GenerateWorkflow creates a GitHub Actions deploy workflow in the given project directory.
@@ -82,11 +67,10 @@ func GenerateWorkflow(projectType string, image string, projectDir string) error
 		Image: image,
 	}
 
+	// Validate project type.
 	switch projectType {
-	case "laravel-web", "laravel-api":
-		data.IsLaravel = true
-	case "nextjs-fullstack", "nextjs-static", "strapi":
-		data.IsNode = true
+	case "laravel-web", "laravel-api", "nextjs-fullstack", "nextjs-static", "strapi":
+		// ok
 	default:
 		return fmt.Errorf("unsupported project type: %s", projectType)
 	}
