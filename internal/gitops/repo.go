@@ -66,10 +66,20 @@ func (r *Repo) Pull() error {
 }
 
 // CommitChanges stages all changes and creates a commit with the given message.
+// Returns nil without error if there are no changes to commit.
 func (r *Repo) CommitChanges(message string) error {
 	if err := r.git("add", "-A"); err != nil {
 		return err
 	}
+
+	// Check if there are staged changes before committing.
+	cmd := exec.Command("git", "diff", "--cached", "--quiet")
+	cmd.Dir = r.Path
+	if err := cmd.Run(); err == nil {
+		// Exit code 0 means no staged changes — nothing to commit.
+		return nil
+	}
+
 	return r.git("commit", "-m", message)
 }
 

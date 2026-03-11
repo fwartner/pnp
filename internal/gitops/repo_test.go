@@ -348,8 +348,8 @@ func TestCommitChanges_NoChanges(t *testing.T) {
 
 	repo := NewRepo(tmp)
 	err := repo.CommitChanges("empty commit")
-	if err == nil {
-		t.Fatal("expected CommitChanges to fail when nothing is staged")
+	if err != nil {
+		t.Fatalf("expected CommitChanges to succeed silently when nothing changed, got: %v", err)
 	}
 }
 
