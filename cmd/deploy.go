@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fwartner/pnp/internal/ci"
@@ -82,44 +81,9 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 4. Determine namespace
-	namespace := projCfg.Name
-	env := strings.ToLower(projCfg.Environment)
-	if env == "preview" || env == "staging" {
-		namespace = "preview-" + projCfg.Name
-	}
-
-	// 5. Build TemplateData
-	isLaravelWeb := projCfg.Type == "laravel-web"
-	data := templates.TemplateData{
-		Name:      projCfg.Name,
-		Namespace: namespace,
-		Subdomain: wizard.Subdomain(projCfg.Domain, globalCfg.Defaults.Domain),
-		Domain:    globalCfg.Defaults.Domain,
-		Image:     projCfg.Image,
-		Tag:       "latest",
-		DBName:    projCfg.Database.Name,
-		DBUsername: projCfg.Name,
-		DBSize:    projCfg.Database.Size,
-
-		RedisEnabled:     projCfg.Redis.Enabled,
-		QueueEnabled:     isLaravelWeb,
-		SchedulerEnabled: isLaravelWeb,
-
-		PersistenceEnabled: isLaravelWeb || projCfg.Type == "strapi",
-		PersistenceSize:    "5Gi",
-
-		InfisicalProjectSlug: projCfg.Infisical.ProjectSlug,
-		InfisicalEnvSlug:     projCfg.Infisical.EnvSlug,
-		InfisicalSecretsPath: projCfg.Infisical.SecretsPath,
-		InfisicalMailEnabled: isLaravelWeb || projCfg.Type == "laravel-api",
-
-		CPU:    projCfg.Resources.CPU,
-		Memory: projCfg.Resources.Memory,
-
-		ChartPath: "apps/" + projCfg.Name,
-		RepoURL:   globalCfg.GitopsRemote,
-	}
+	// 4. Build TemplateData
+	namespace := namespaceFromConfig(projCfg)
+	data := buildTemplateData(projCfg, globalCfg)
 
 	// 6. Render templates to temp dir
 	fmt.Println(titleStyle.Render("Rendering templates..."))
@@ -158,12 +122,18 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		fmt.Println(titleStyle.Render("Creating secrets in Infisical..."))
 		client := infisical.NewClient(globalCfg.Infisical.Host, globalCfg.Infisical.Token)
 
+		pw, err := infisical.GeneratePassword()
+		if err != nil {
+			fmt.Println(errorStyle.Render("Failed to generate password: " + err.Error()))
+			return err
+		}
+
 		secrets := map[string]string{
-			"password": infisical.GeneratePassword(),
+			"password": pw,
 			"username": projCfg.Name,
 		}
 
-		err := client.CreateSecrets(
+		err = client.CreateSecrets(
 			secrets,
 			projCfg.Infisical.ProjectSlug,
 			projCfg.Infisical.EnvSlug,

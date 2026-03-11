@@ -371,7 +371,7 @@ spec:
           existingSecretPasswordKey: password
         persistence:
           enabled: true
-          size: 5Gi
+          size: << .PersistenceSize >>
           storageClass: hcloud-volumes
         resources:
           requests:
@@ -415,7 +415,7 @@ metadata:
   name: << .Name >>-db-infisical
   namespace: << .Namespace >>
 spec:
-  hostAPI: https://vault.intern.pixelandprocess.de
+  hostAPI: << .InfisicalHost >>
   resyncInterval: 60
   authentication:
     universalAuth:
@@ -438,7 +438,7 @@ metadata:
   name: << .Name >>-db-infisical
   namespace: << .Namespace >>
 spec:
-  hostAPI: https://vault.intern.pixelandprocess.de
+  hostAPI: << .InfisicalHost >>
   resyncInterval: 60
   authentication:
     universalAuth:
@@ -460,7 +460,7 @@ metadata:
   name: << .Name >>-mail-infisical
   namespace: << .Namespace >>
 spec:
-  hostAPI: https://vault.intern.pixelandprocess.de
+  hostAPI: << .InfisicalHost >>
   resyncInterval: 60
   authentication:
     universalAuth:
@@ -468,7 +468,7 @@ spec:
         secretName: infisical-machine-identity
         secretNamespace: infisical-operator-system
       secretsScope:
-        projectSlug: cluster-shared-ys-zj
+        projectSlug: << .InfisicalMailProjectSlug >>
         envSlug: << .InfisicalEnvSlug >>
         secretsPath: /smtp
   managedSecretReference:

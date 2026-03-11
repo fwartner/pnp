@@ -20,10 +20,12 @@ type TemplateData struct {
 	PersistenceEnabled bool
 	PersistenceSize    string
 
-	InfisicalProjectSlug string
-	InfisicalEnvSlug     string
-	InfisicalSecretsPath string
-	InfisicalMailEnabled bool
+	InfisicalProjectSlug     string
+	InfisicalEnvSlug         string
+	InfisicalSecretsPath     string
+	InfisicalMailEnabled     bool
+	InfisicalHost            string
+	InfisicalMailProjectSlug string
 
 	CPU       string
 	Memory    string

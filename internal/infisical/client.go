@@ -26,10 +26,10 @@ func NewClient(host, token string) *Client {
 
 // GeneratePassword generates a 32-character random password that is URL-safe
 // (no /, +, or = characters).
-func GeneratePassword() string {
+func GeneratePassword() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		panic(fmt.Sprintf("failed to generate random bytes: %v", err))
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
 	encoded := base64.RawURLEncoding.EncodeToString(b)
 	// RawURLEncoding uses - and _ instead of + and /, and no padding.
@@ -37,17 +37,17 @@ func GeneratePassword() string {
 	if len(encoded) > 32 {
 		encoded = encoded[:32]
 	}
-	return encoded
+	return encoded, nil
 }
 
 // GenerateLaravelKey generates a Laravel-compatible application key in the
 // format "base64:<32 bytes base64 encoded>".
-func GenerateLaravelKey() string {
+func GenerateLaravelKey() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
-		panic(fmt.Sprintf("failed to generate random bytes: %v", err))
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
-	return "base64:" + base64.StdEncoding.EncodeToString(b)
+	return "base64:" + base64.StdEncoding.EncodeToString(b), nil
 }
 
 type secretEntry struct {

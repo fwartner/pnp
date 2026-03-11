@@ -6,7 +6,10 @@ import (
 )
 
 func TestGeneratePassword(t *testing.T) {
-	pw := GeneratePassword()
+	pw, err := GeneratePassword()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(pw) < 24 {
 		t.Errorf("expected password length >= 24, got %d", len(pw))
 	}
@@ -19,14 +22,20 @@ func TestGeneratePassword(t *testing.T) {
 	}
 
 	// Verify uniqueness (two calls should not produce the same result)
-	pw2 := GeneratePassword()
+	pw2, err := GeneratePassword()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if pw == pw2 {
 		t.Error("two consecutive GeneratePassword calls returned the same value")
 	}
 }
 
 func TestGenerateLaravelKey(t *testing.T) {
-	key := GenerateLaravelKey()
+	key, err := GenerateLaravelKey()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if len(key) <= 10 {
 		t.Errorf("expected key length > 10, got %d", len(key))
 	}

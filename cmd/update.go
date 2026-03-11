@@ -3,12 +3,10 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/fwartner/pnp/internal/config"
 	"github.com/fwartner/pnp/internal/gitops"
 	"github.com/fwartner/pnp/internal/templates"
-	"github.com/fwartner/pnp/internal/wizard"
 	"github.com/spf13/cobra"
 )
 
@@ -44,44 +42,9 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 3. Determine namespace
-	namespace := projCfg.Name
-	env := strings.ToLower(projCfg.Environment)
-	if env == "preview" || env == "staging" {
-		namespace = "preview-" + projCfg.Name
-	}
-
-	// 4. Build TemplateData
-	isLaravelWeb := projCfg.Type == "laravel-web"
-	data := templates.TemplateData{
-		Name:      projCfg.Name,
-		Namespace: namespace,
-		Subdomain: wizard.Subdomain(projCfg.Domain, globalCfg.Defaults.Domain),
-		Domain:    globalCfg.Defaults.Domain,
-		Image:     projCfg.Image,
-		Tag:       "latest",
-		DBName:    projCfg.Database.Name,
-		DBUsername: projCfg.Name,
-		DBSize:    projCfg.Database.Size,
-
-		RedisEnabled:     projCfg.Redis.Enabled,
-		QueueEnabled:     isLaravelWeb,
-		SchedulerEnabled: isLaravelWeb,
-
-		PersistenceEnabled: isLaravelWeb || projCfg.Type == "strapi",
-		PersistenceSize:    "5Gi",
-
-		InfisicalProjectSlug: projCfg.Infisical.ProjectSlug,
-		InfisicalEnvSlug:     projCfg.Infisical.EnvSlug,
-		InfisicalSecretsPath: projCfg.Infisical.SecretsPath,
-		InfisicalMailEnabled: isLaravelWeb || projCfg.Type == "laravel-api",
-
-		CPU:    projCfg.Resources.CPU,
-		Memory: projCfg.Resources.Memory,
-
-		ChartPath: "apps/" + projCfg.Name,
-		RepoURL:   globalCfg.GitopsRemote,
-	}
+	// 3. Build TemplateData
+	namespace := namespaceFromConfig(projCfg)
+	data := buildTemplateData(projCfg, globalCfg)
 
 	// 5. Render templates to temp dir
 	fmt.Println(titleStyle.Render("Rendering templates..."))

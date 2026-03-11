@@ -93,7 +93,11 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	path := config.GlobalConfigPath()
+	path, err := config.GlobalConfigPath()
+	if err != nil {
+		fmt.Println(errorStyle.Render("Failed to determine config path: " + err.Error()))
+		return err
+	}
 	fmt.Println(successStyle.Render(fmt.Sprintf("Configuration saved to %s", path)))
 	return nil
 }

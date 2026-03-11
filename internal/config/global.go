@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 
@@ -15,8 +16,9 @@ type GlobalConfig struct {
 }
 
 type InfisicalConfig struct {
-	Host  string `yaml:"host"`
-	Token string `yaml:"token"`
+	Host             string `yaml:"host"`
+	Token            string `yaml:"token"`
+	MailProjectSlug  string `yaml:"mailProjectSlug"`
 }
 
 type DefaultsConfig struct {
@@ -28,7 +30,8 @@ type DefaultsConfig struct {
 func defaultGlobalConfig() GlobalConfig {
 	return GlobalConfig{
 		Infisical: InfisicalConfig{
-			Host: "https://vault.intern.pixelandprocess.de",
+			Host:            "https://vault.intern.pixelandprocess.de",
+			MailProjectSlug: "cluster-shared-ys-zj",
 		},
 		Defaults: DefaultsConfig{
 			Domain:        "pixelandprocess.de",
@@ -37,13 +40,20 @@ func defaultGlobalConfig() GlobalConfig {
 	}
 }
 
-func GlobalConfigPath() string {
-	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".pnp.yaml")
+func GlobalConfigPath() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("determining home directory: %w", err)
+	}
+	return filepath.Join(home, ".pnp.yaml"), nil
 }
 
 func LoadGlobalConfig() (GlobalConfig, error) {
-	return LoadGlobalConfigFrom(GlobalConfigPath())
+	path, err := GlobalConfigPath()
+	if err != nil {
+		return defaultGlobalConfig(), err
+	}
+	return LoadGlobalConfigFrom(path)
 }
 
 func LoadGlobalConfigFrom(path string) (GlobalConfig, error) {
@@ -64,7 +74,11 @@ func LoadGlobalConfigFrom(path string) (GlobalConfig, error) {
 }
 
 func SaveGlobalConfig(cfg GlobalConfig) error {
-	return SaveGlobalConfigTo(cfg, GlobalConfigPath())
+	path, err := GlobalConfigPath()
+	if err != nil {
+		return err
+	}
+	return SaveGlobalConfigTo(cfg, path)
 }
 
 func SaveGlobalConfigTo(cfg GlobalConfig, path string) error {
