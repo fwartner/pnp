@@ -55,8 +55,8 @@ jobs:
           push: true
           tags: ${{ "{{" }} steps.meta.outputs.tags {{ "}}" }}
           labels: ${{ "{{" }} steps.meta.outputs.labels {{ "}}" }}
-          build-args: |
-            COMPOSER_AUTH={"github-oauth":{"github.com":"${{ "{{" }} secrets.GITHUB_TOKEN {{ "}}" }}"}}
+          secrets: |
+            composer_auth={"github-oauth":{"github.com":"${{ "{{" }} secrets.GITHUB_TOKEN {{ "}}" }}"}}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -69,7 +69,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: {{ .GitopsRepo }}
-          token: ${{ "{{" }} secrets.GITOPS_TOKEN {{ "}}" }}
+          token: ${{ "{{" }} secrets.GITOPS_TOKEN || secrets.GITHUB_TOKEN {{ "}}" }}
           path: gitops
 
       - name: Update image tag
