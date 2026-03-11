@@ -14,7 +14,7 @@ const laravelDockerfile = `# ---- Composer dependencies ----
 FROM composer:2 AS composer-deps
 WORKDIR /app
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-reqs
 
 # ---- Node build (frontend assets) ----
 FROM node:20-alpine AS node-build
@@ -128,7 +128,7 @@ const laravelOctaneFrankenphpDockerfile = `# ---- Composer dependencies ----
 FROM composer:2 AS composer-deps
 WORKDIR /app
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-reqs
 
 # ---- Node build (frontend assets) ----
 FROM node:20-alpine AS node-build
@@ -183,7 +183,7 @@ const laravelOctaneSwooleDockerfile = `# ---- Composer dependencies ----
 FROM composer:2 AS composer-deps
 WORKDIR /app
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-reqs
 
 # ---- Node build (frontend assets) ----
 FROM node:20-alpine AS node-build
@@ -244,7 +244,7 @@ const laravelOctaneRoadrunnerDockerfile = `# ---- Composer dependencies ----
 FROM composer:2 AS composer-deps
 WORKDIR /app
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist
+RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-reqs
 
 # ---- Node build (frontend assets) ----
 FROM node:20-alpine AS node-build
