@@ -16,7 +16,13 @@ type TemplateData struct {
 
 	RedisEnabled       bool
 	QueueEnabled       bool
+	QueueReplicas      int
 	SchedulerEnabled   bool
+	HorizonEnabled     bool
+	ReverbEnabled      bool
+	ReverbPort         int
+	OctaneEnabled      bool
+	OctaneServer       string
 	PersistenceEnabled bool
 	PersistenceSize    string
 

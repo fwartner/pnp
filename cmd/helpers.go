@@ -11,13 +11,28 @@ import (
 // buildTemplateData constructs a TemplateData from the project and global
 // configuration. This is shared between deploy and update commands.
 func buildTemplateData(projCfg config.ProjectConfig, globalCfg config.GlobalConfig) templates.TemplateData {
-	namespace := projCfg.Name
-	env := strings.ToLower(projCfg.Environment)
-	if env == "preview" || env == "staging" {
-		namespace = "preview-" + projCfg.Name
+	namespace := namespaceFromConfig(projCfg)
+	isLaravel := projCfg.Type == "laravel-web" || projCfg.Type == "laravel-api"
+
+	queueReplicas := projCfg.Queue.Replicas
+	if queueReplicas < 1 {
+		queueReplicas = 1
 	}
 
-	isLaravelWeb := projCfg.Type == "laravel-web"
+	reverbPort := projCfg.Reverb.Port
+	if reverbPort == 0 {
+		reverbPort = 8080
+	}
+
+	octaneServer := projCfg.Octane.Server
+	if octaneServer == "" {
+		octaneServer = "frankenphp"
+	}
+
+	persistenceSize := projCfg.Persistence.Size
+	if persistenceSize == "" {
+		persistenceSize = "5Gi"
+	}
 
 	return templates.TemplateData{
 		Name:      projCfg.Name,
@@ -31,16 +46,23 @@ func buildTemplateData(projCfg config.ProjectConfig, globalCfg config.GlobalConf
 		DBSize:    projCfg.Database.Size,
 
 		RedisEnabled:     projCfg.Redis.Enabled,
-		QueueEnabled:     isLaravelWeb,
-		SchedulerEnabled: isLaravelWeb,
+		QueueEnabled:     projCfg.Queue.Enabled,
+		QueueReplicas:    queueReplicas,
+		SchedulerEnabled: projCfg.Scheduler.Enabled,
 
-		PersistenceEnabled: isLaravelWeb || projCfg.Type == "strapi",
-		PersistenceSize:    "5Gi",
+		HorizonEnabled: projCfg.Horizon.Enabled,
+		ReverbEnabled:  projCfg.Reverb.Enabled,
+		ReverbPort:     reverbPort,
+		OctaneEnabled:  projCfg.Octane.Enabled,
+		OctaneServer:   octaneServer,
+
+		PersistenceEnabled: projCfg.Persistence.Enabled,
+		PersistenceSize:    persistenceSize,
 
 		InfisicalProjectSlug:     projCfg.Infisical.ProjectSlug,
 		InfisicalEnvSlug:         projCfg.Infisical.EnvSlug,
 		InfisicalSecretsPath:     projCfg.Infisical.SecretsPath,
-		InfisicalMailEnabled:     isLaravelWeb || projCfg.Type == "laravel-api",
+		InfisicalMailEnabled:     isLaravel,
 		InfisicalHost:            globalCfg.Infisical.Host,
 		InfisicalMailProjectSlug: globalCfg.Infisical.MailProjectSlug,
 

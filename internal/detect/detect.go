@@ -15,6 +15,44 @@ type DetectionResult struct {
 	Confidence string // "high", "medium", "low"
 }
 
+// LaravelFeatures holds detected Laravel package features.
+type LaravelFeatures struct {
+	Horizon bool
+	Reverb  bool
+	Octane  bool
+}
+
+// DetectLaravelFeatures checks composer.json for Horizon, Reverb, and Octane packages.
+func DetectLaravelFeatures(dir string) LaravelFeatures {
+	composerPath := filepath.Join(dir, "composer.json")
+	data, err := os.ReadFile(composerPath)
+	if err != nil {
+		return LaravelFeatures{}
+	}
+
+	var pkg struct {
+		Require    map[string]string `json:"require"`
+		RequireDev map[string]string `json:"require-dev"`
+	}
+	if err := json.Unmarshal(data, &pkg); err != nil {
+		return LaravelFeatures{}
+	}
+
+	has := func(name string) bool {
+		_, ok := pkg.Require[name]
+		if !ok {
+			_, ok = pkg.RequireDev[name]
+		}
+		return ok
+	}
+
+	return LaravelFeatures{
+		Horizon: has("laravel/horizon"),
+		Reverb:  has("laravel/reverb"),
+		Octane:  has("laravel/octane"),
+	}
+}
+
 // DetectProjectType inspects the directory and returns the detected project type.
 func DetectProjectType(dir string) DetectionResult {
 	// Check Laravel first (composer.json + artisan)

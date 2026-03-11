@@ -32,6 +32,14 @@ app:
 database:
   name: << .DBName >>
   username: << .DBUsername >>
+horizon:
+  enabled: << .HorizonEnabled >>
+reverb:
+  enabled: << .ReverbEnabled >>
+  port: << .ReverbPort >>
+octane:
+  enabled: << .OctaneEnabled >>
+  server: << .OctaneServer >>
 mail:
   from: info@pixelandprocess.de
 `
@@ -128,11 +136,20 @@ spec:
           existingSecret: {{ .Release.Name }}-db-credentials
           existingSecretPasswordKey: password
         redis:
-          enabled: true
+          enabled: << .RedisEnabled >>
         queue:
-          enabled: true
+          enabled: << .QueueEnabled >>
+          replicaCount: << .QueueReplicas >>
         scheduler:
-          enabled: true
+          enabled: << .SchedulerEnabled >>
+        horizon:
+          enabled: << .HorizonEnabled >>
+        reverb:
+          enabled: << .ReverbEnabled >>
+          port: << .ReverbPort >>
+        octane:
+          enabled: << .OctaneEnabled >>
+          server: << .OctaneServer >>
         mail:
           mailer: smtp
           host: smtp.postmarkapp.com
@@ -141,7 +158,7 @@ spec:
           from: {{ .Values.mail.from }}
           fromName: {{ .Release.Name | quote }}
         persistence:
-          enabled: true
+          enabled: << .PersistenceEnabled >>
           size: << .PersistenceSize >>
           storageClass: hcloud-volumes
         resources:
@@ -202,11 +219,20 @@ spec:
           existingSecret: {{ .Release.Name }}-db-credentials
           existingSecretPasswordKey: password
         redis:
-          enabled: true
+          enabled: << .RedisEnabled >>
         queue:
-          enabled: false
+          enabled: << .QueueEnabled >>
+          replicaCount: << .QueueReplicas >>
         scheduler:
-          enabled: false
+          enabled: << .SchedulerEnabled >>
+        horizon:
+          enabled: << .HorizonEnabled >>
+        reverb:
+          enabled: << .ReverbEnabled >>
+          port: << .ReverbPort >>
+        octane:
+          enabled: << .OctaneEnabled >>
+          server: << .OctaneServer >>
         mail:
           mailer: smtp
           host: smtp.postmarkapp.com
@@ -215,7 +241,9 @@ spec:
           from: {{ .Values.mail.from }}
           fromName: {{ .Release.Name | quote }}
         persistence:
-          enabled: false
+          enabled: << .PersistenceEnabled >>
+          size: << .PersistenceSize >>
+          storageClass: hcloud-volumes
         resources:
           web:
             requests:

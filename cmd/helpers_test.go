@@ -65,7 +65,10 @@ func TestBuildTemplateData_LaravelWeb(t *testing.T) {
 			Size:    "5Gi",
 			Name:    "acme_db",
 		},
-		Redis: config.RedisConfig{Enabled: true},
+		Redis:       config.RedisConfig{Enabled: true},
+		Queue:       config.QueueConfig{Enabled: true, Replicas: 1},
+		Scheduler:   config.SchedulerConfig{Enabled: true},
+		Persistence: config.PersistenceConfig{Enabled: true, Size: "5Gi"},
 		Infisical: config.ProjectInfisical{
 			ProjectSlug: "customer-apps-f-jq3",
 			EnvSlug:     "prod",
@@ -235,7 +238,8 @@ func TestBuildTemplateData_Strapi(t *testing.T) {
 			Size:    "10Gi",
 			Name:    "cms_db",
 		},
-		Redis: config.RedisConfig{Enabled: false},
+		Redis:       config.RedisConfig{Enabled: false},
+		Persistence: config.PersistenceConfig{Enabled: true, Size: "5Gi"},
 		Resources: config.ResourcesConfig{
 			CPU:    "150m",
 			Memory: "384Mi",

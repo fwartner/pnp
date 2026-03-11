@@ -2,6 +2,7 @@ package wizard
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/charmbracelet/huh"
 	"github.com/fwartner/pnp/internal/config"
@@ -10,6 +11,7 @@ import (
 
 var projectTypes = []string{"laravel-web", "laravel-api", "nextjs-fullstack", "nextjs-static", "strapi"}
 var environments = []string{"preview", "staging", "production"}
+var octaneServers = []string{"frankenphp", "swoole", "roadrunner"}
 
 // Run executes the interactive wizard and returns a filled ProjectConfig.
 func Run(detected detect.DetectionResult, inferredImage string, projectName string, globalCfg config.GlobalConfig) (config.ProjectConfig, error) {
@@ -25,6 +27,28 @@ func Run(detected detect.DetectionResult, inferredImage string, projectName stri
 		},
 		Redis: config.RedisConfig{
 			Enabled: true,
+		},
+		Queue: config.QueueConfig{
+			Enabled:  true,
+			Replicas: 1,
+		},
+		Scheduler: config.SchedulerConfig{
+			Enabled: true,
+		},
+		Horizon: config.HorizonConfig{
+			Enabled: false,
+		},
+		Reverb: config.ReverbConfig{
+			Enabled: false,
+			Port:    8080,
+		},
+		Octane: config.OctaneConfig{
+			Enabled: false,
+			Server:  "frankenphp",
+		},
+		Persistence: config.PersistenceConfig{
+			Enabled: true,
+			Size:    "5Gi",
 		},
 		Infisical: config.ProjectInfisical{
 			ProjectSlug: "customer-apps-f-jq3",
@@ -92,7 +116,7 @@ func Run(detected detect.DetectionResult, inferredImage string, projectName stri
 			return cfg, err
 		}
 
-		if cfg.Type == "laravel-web" || cfg.Type == "laravel-api" {
+		if isLaravel(cfg.Type) {
 			err = huh.NewForm(
 				huh.NewGroup(
 					huh.NewConfirm().
@@ -107,9 +131,119 @@ func Run(detected detect.DetectionResult, inferredImage string, projectName stri
 	} else {
 		cfg.Database.Enabled = false
 		cfg.Redis.Enabled = false
+		cfg.Queue.Enabled = false
+		cfg.Scheduler.Enabled = false
+		cfg.Persistence.Enabled = false
 	}
 
-	// Step 4: Infisical (if DB enabled)
+	// Step 4: Queue, Scheduler, Persistence (Laravel only)
+	if isLaravel(cfg.Type) {
+		err = huh.NewForm(
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title("Enable queue worker?").
+					Value(&cfg.Queue.Enabled),
+				huh.NewConfirm().
+					Title("Enable task scheduler?").
+					Value(&cfg.Scheduler.Enabled),
+				huh.NewConfirm().
+					Title("Enable persistent storage?").
+					Value(&cfg.Persistence.Enabled),
+			),
+		).Run()
+		if err != nil {
+			return cfg, err
+		}
+
+		if cfg.Persistence.Enabled {
+			err = huh.NewForm(
+				huh.NewGroup(
+					huh.NewInput().
+						Title("Persistent storage size").
+						Value(&cfg.Persistence.Size),
+				),
+			).Run()
+			if err != nil {
+				return cfg, err
+			}
+		}
+	}
+
+	// Step 5: Laravel features — Horizon, Reverb, Octane
+	if isLaravel(cfg.Type) {
+		// Auto-detect features from composer.json
+		cwd := "."
+		features := detect.DetectLaravelFeatures(cwd)
+		if features.Horizon {
+			cfg.Horizon.Enabled = true
+		}
+		if features.Reverb {
+			cfg.Reverb.Enabled = true
+		}
+		if features.Octane {
+			cfg.Octane.Enabled = true
+		}
+
+		featureDesc := ""
+		if features.Horizon || features.Reverb || features.Octane {
+			var detected []string
+			if features.Horizon {
+				detected = append(detected, "Horizon")
+			}
+			if features.Reverb {
+				detected = append(detected, "Reverb")
+			}
+			if features.Octane {
+				detected = append(detected, "Octane")
+			}
+			featureDesc = fmt.Sprintf("Detected: %s", strings.Join(detected, ", "))
+		}
+
+		horizonTitle := "Enable Laravel Horizon?"
+		reverbTitle := "Enable Laravel Reverb (WebSockets)?"
+		octaneTitle := "Enable Laravel Octane?"
+		if featureDesc != "" {
+			horizonTitle += " (" + featureDesc + ")"
+		}
+
+		err = huh.NewForm(
+			huh.NewGroup(
+				huh.NewConfirm().
+					Title(horizonTitle).
+					Value(&cfg.Horizon.Enabled),
+				huh.NewConfirm().
+					Title(reverbTitle).
+					Value(&cfg.Reverb.Enabled),
+				huh.NewConfirm().
+					Title(octaneTitle).
+					Value(&cfg.Octane.Enabled),
+			),
+		).Run()
+		if err != nil {
+			return cfg, err
+		}
+
+		// Horizon replaces the default queue worker
+		if cfg.Horizon.Enabled {
+			cfg.Queue.Enabled = false
+		}
+
+		if cfg.Octane.Enabled {
+			err = huh.NewForm(
+				huh.NewGroup(
+					huh.NewSelect[string]().
+						Title("Octane server").
+						Options(huh.NewOptions(octaneServers...)...).
+						Value(&cfg.Octane.Server),
+				),
+			).Run()
+			if err != nil {
+				return cfg, err
+			}
+		}
+	}
+
+	// Step 6: Infisical (if DB enabled)
 	if cfg.Database.Enabled {
 		cfg.Infisical.SecretsPath = "/" + cfg.Name + "/db"
 		err = huh.NewForm(
@@ -130,7 +264,7 @@ func Run(detected detect.DetectionResult, inferredImage string, projectName stri
 		}
 	}
 
-	// Step 5: Resources
+	// Step 7: Resources
 	err = huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
@@ -146,6 +280,10 @@ func Run(detected detect.DetectionResult, inferredImage string, projectName stri
 	}
 
 	return cfg, nil
+}
+
+func isLaravel(projectType string) bool {
+	return projectType == "laravel-web" || projectType == "laravel-api"
 }
 
 func defaultDomain(name, environment, baseDomain string) string {

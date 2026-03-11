@@ -8,16 +8,22 @@ import (
 )
 
 type ProjectConfig struct {
-	Name        string           `yaml:"name"`
-	Type        string           `yaml:"type"`
-	Environment string           `yaml:"environment"`
-	Domain      string           `yaml:"domain"`
-	Image       string           `yaml:"image"`
-	Database    DatabaseConfig   `yaml:"database"`
-	Redis       RedisConfig      `yaml:"redis"`
-	Infisical   ProjectInfisical `yaml:"infisical"`
-	Resources   ResourcesConfig  `yaml:"resources"`
-	CI          CIConfig         `yaml:"ci"`
+	Name        string            `yaml:"name"`
+	Type        string            `yaml:"type"`
+	Environment string            `yaml:"environment"`
+	Domain      string            `yaml:"domain"`
+	Image       string            `yaml:"image"`
+	Database    DatabaseConfig    `yaml:"database"`
+	Redis       RedisConfig       `yaml:"redis"`
+	Queue       QueueConfig       `yaml:"queue"`
+	Scheduler   SchedulerConfig   `yaml:"scheduler"`
+	Horizon     HorizonConfig     `yaml:"horizon"`
+	Reverb      ReverbConfig      `yaml:"reverb"`
+	Octane      OctaneConfig      `yaml:"octane"`
+	Persistence PersistenceConfig `yaml:"persistence"`
+	Infisical   ProjectInfisical  `yaml:"infisical"`
+	Resources   ResourcesConfig   `yaml:"resources"`
+	CI          CIConfig          `yaml:"ci"`
 }
 
 type DatabaseConfig struct {
@@ -28,6 +34,34 @@ type DatabaseConfig struct {
 
 type RedisConfig struct {
 	Enabled bool `yaml:"enabled"`
+}
+
+type QueueConfig struct {
+	Enabled  bool `yaml:"enabled"`
+	Replicas int  `yaml:"replicas"`
+}
+
+type SchedulerConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+type HorizonConfig struct {
+	Enabled bool `yaml:"enabled"`
+}
+
+type ReverbConfig struct {
+	Enabled bool `yaml:"enabled"`
+	Port    int  `yaml:"port"`
+}
+
+type OctaneConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Server  string `yaml:"server"` // frankenphp, swoole, roadrunner
+}
+
+type PersistenceConfig struct {
+	Enabled bool   `yaml:"enabled"`
+	Size    string `yaml:"size"`
 }
 
 type ProjectInfisical struct {
