@@ -19,6 +19,7 @@ brews:
   - repository:
       owner: fwartner
       name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
     name: pnp
     homepage: https://github.com/fwartner/pnp
     description: "Pixel & Process Kubernetes deployment manager"
