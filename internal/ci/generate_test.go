@@ -39,7 +39,9 @@ func TestGenerateLaravelWorkflow(t *testing.T) {
 		"cache-from: type=gha",
 		"org/gitops",
 		"GITOPS_TOKEN",
-		"apps/laravel-app/values.yaml",
+		"apps/customer/laravel-app/values.yaml",
+		"apps/agency/laravel-app/values.yaml",
+		"apps/previews/laravel-app/values.yaml",
 		"deploy(laravel-app)",
 	} {
 		if !strings.Contains(content, want) {

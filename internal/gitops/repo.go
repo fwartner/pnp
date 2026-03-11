@@ -21,19 +21,27 @@ func NewRepo(path string) *Repo {
 }
 
 // AppPath returns the filesystem path where an application's manifests live.
-// Preview and staging environments are stored under apps/previews/{name},
-// while production goes under apps/{name}.
-func (r *Repo) AppPath(name, environment string) string {
+// Uses scope and environment to determine the correct subdirectory:
+//   - preview/staging → apps/previews/{name}
+//   - customer scope  → apps/customer/{name}
+//   - agency scope    → apps/agency/{name}
+//   - private scope   → apps/agency/{name}
+func (r *Repo) AppPath(name, environment, scope string) string {
 	env := strings.ToLower(environment)
 	if env == "preview" || env == "staging" {
 		return filepath.Join(r.Path, "apps", "previews", name)
 	}
-	return filepath.Join(r.Path, "apps", name)
+	switch strings.ToLower(scope) {
+	case "customer":
+		return filepath.Join(r.Path, "apps", "customer", name)
+	default:
+		return filepath.Join(r.Path, "apps", "agency", name)
+	}
 }
 
 // AppExists reports whether the application directory already exists.
-func (r *Repo) AppExists(name, environment string) bool {
-	p := r.AppPath(name, environment)
+func (r *Repo) AppExists(name, environment, scope string) bool {
+	p := r.AppPath(name, environment, scope)
 	info, err := os.Stat(p)
 	if err != nil {
 		return false
@@ -43,8 +51,8 @@ func (r *Repo) AppExists(name, environment string) bool {
 
 // WriteApp copies rendered manifest files from srcDir into the application
 // directory, removing any existing content first.
-func (r *Repo) WriteApp(name, environment, srcDir string) error {
-	dst := r.AppPath(name, environment)
+func (r *Repo) WriteApp(name, environment, scope, srcDir string) error {
+	dst := r.AppPath(name, environment, scope)
 
 	// Remove existing app directory if present.
 	if err := os.RemoveAll(dst); err != nil {
@@ -55,8 +63,8 @@ func (r *Repo) WriteApp(name, environment, srcDir string) error {
 }
 
 // DeleteApp removes the application directory entirely.
-func (r *Repo) DeleteApp(name, environment string) error {
-	dst := r.AppPath(name, environment)
+func (r *Repo) DeleteApp(name, environment, scope string) error {
+	dst := r.AppPath(name, environment, scope)
 	return os.RemoveAll(dst)
 }
 

@@ -73,7 +73,7 @@ func buildTemplateData(projCfg config.ProjectConfig, globalCfg config.GlobalConf
 		CPU:    projCfg.Resources.CPU,
 		Memory: projCfg.Resources.Memory,
 
-		ChartPath: "apps/" + projCfg.Name,
+		ChartPath: chartPathForType(projCfg.Type),
 		RepoURL:   globalCfg.GitopsRemote,
 	}
 }
@@ -86,4 +86,19 @@ func namespaceFromConfig(projCfg config.ProjectConfig) string {
 		namespace = "preview-" + projCfg.Name
 	}
 	return namespace
+}
+
+// chartPathForType returns the shared Helm chart path in the gitops repo
+// based on the project type (e.g., "charts/laravel", "charts/nextjs").
+func chartPathForType(projectType string) string {
+	switch projectType {
+	case "laravel-web", "laravel-api":
+		return "charts/laravel"
+	case "nextjs-fullstack", "nextjs-static":
+		return "charts/nextjs"
+	case "strapi":
+		return "charts/strapi"
+	default:
+		return "charts/" + projectType
+	}
 }

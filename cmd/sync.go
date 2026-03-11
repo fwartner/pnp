@@ -95,7 +95,7 @@ func runSync(cmd *cobra.Command, args []string) error {
 
 	namespace := namespaceFromConfig(projCfg)
 
-	if err := repo.WriteApp(projCfg.Name, projCfg.Environment, tmpDir); err != nil {
+	if err := repo.WriteApp(projCfg.Name, projCfg.Environment, projCfg.Scope, tmpDir); err != nil {
 		return fmt.Errorf("writing app: %w", err)
 	}
 

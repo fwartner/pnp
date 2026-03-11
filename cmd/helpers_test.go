@@ -134,8 +134,8 @@ func TestBuildTemplateData_LaravelWeb(t *testing.T) {
 	if td.InfisicalMailProjectSlug != "cluster-shared-ys-zj" {
 		t.Errorf("InfisicalMailProjectSlug: expected cluster-shared-ys-zj, got %s", td.InfisicalMailProjectSlug)
 	}
-	if td.ChartPath != "apps/acme" {
-		t.Errorf("ChartPath: expected apps/acme, got %s", td.ChartPath)
+	if td.ChartPath != "charts/laravel" {
+		t.Errorf("ChartPath: expected charts/laravel, got %s", td.ChartPath)
 	}
 	if td.RepoURL != "https://github.com/test/gitops.git" {
 		t.Errorf("RepoURL: expected https://github.com/test/gitops.git, got %s", td.RepoURL)

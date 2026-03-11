@@ -76,12 +76,12 @@ func runDestroy(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Warning: git pull failed: %v\n", err)
 	}
 
-	if !repo.AppExists(projCfg.Name, projCfg.Environment) {
+	if !repo.AppExists(projCfg.Name, projCfg.Environment, projCfg.Scope) {
 		fmt.Println(errorStyle.Render("App directory does not exist in gitops repo. Nothing to destroy."))
 		return nil
 	}
 
-	if err := repo.DeleteApp(projCfg.Name, projCfg.Environment); err != nil {
+	if err := repo.DeleteApp(projCfg.Name, projCfg.Environment, projCfg.Scope); err != nil {
 		fmt.Println(errorStyle.Render("Failed to delete app: " + err.Error()))
 		return err
 	}

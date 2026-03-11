@@ -72,7 +72,7 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Warning: git pull failed: %v\n", err)
 	}
 
-	if err := repo.WriteApp(projCfg.Name, projCfg.Environment, tmpDir); err != nil {
+	if err := repo.WriteApp(projCfg.Name, projCfg.Environment, projCfg.Scope, tmpDir); err != nil {
 		fmt.Println(errorStyle.Render("Failed to write app: " + err.Error()))
 		return err
 	}

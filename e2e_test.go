@@ -79,11 +79,11 @@ func TestE2E_LaravelDeployPipeline(t *testing.T) {
 	// 5. Write to fake gitops dir using gitops.NewRepo + WriteApp
 	gitopsDir := t.TempDir()
 	repo := gitops.NewRepo(gitopsDir)
-	if err := repo.WriteApp("test-customer", "production", renderDir); err != nil {
+	if err := repo.WriteApp("test-customer", "production", "customer", renderDir); err != nil {
 		t.Fatalf("WriteApp failed: %v", err)
 	}
 
-	appDir := repo.AppPath("test-customer", "production")
+	appDir := repo.AppPath("test-customer", "production", "customer")
 
 	// 6. Verify Chart.yaml
 	chartData, err := os.ReadFile(filepath.Join(appDir, "Chart.yaml"))

@@ -14,21 +14,23 @@ func TestAppPath(t *testing.T) {
 	tests := []struct {
 		name     string
 		env      string
+		scope    string
 		expected string
 	}{
-		{"myapp", "preview", "/tmp/gitops-repo/apps/previews/myapp"},
-		{"myapp", "Preview", "/tmp/gitops-repo/apps/previews/myapp"},
-		{"myapp", "staging", "/tmp/gitops-repo/apps/previews/myapp"},
-		{"myapp", "Staging", "/tmp/gitops-repo/apps/previews/myapp"},
-		{"myapp", "production", "/tmp/gitops-repo/apps/myapp"},
-		{"myapp", "Production", "/tmp/gitops-repo/apps/myapp"},
+		{"myapp", "preview", "customer", "/tmp/gitops-repo/apps/previews/myapp"},
+		{"myapp", "Preview", "agency", "/tmp/gitops-repo/apps/previews/myapp"},
+		{"myapp", "staging", "customer", "/tmp/gitops-repo/apps/previews/myapp"},
+		{"myapp", "Staging", "agency", "/tmp/gitops-repo/apps/previews/myapp"},
+		{"myapp", "production", "customer", "/tmp/gitops-repo/apps/customer/myapp"},
+		{"myapp", "Production", "agency", "/tmp/gitops-repo/apps/agency/myapp"},
+		{"myapp", "production", "private", "/tmp/gitops-repo/apps/agency/myapp"},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.env, func(t *testing.T) {
-			got := repo.AppPath(tt.name, tt.env)
+		t.Run(tt.env+"_"+tt.scope, func(t *testing.T) {
+			got := repo.AppPath(tt.name, tt.env, tt.scope)
 			if got != tt.expected {
-				t.Errorf("AppPath(%q, %q) = %q, want %q", tt.name, tt.env, got, tt.expected)
+				t.Errorf("AppPath(%q, %q, %q) = %q, want %q", tt.name, tt.env, tt.scope, got, tt.expected)
 			}
 		})
 	}
@@ -38,16 +40,16 @@ func TestAppExists(t *testing.T) {
 	tmp := t.TempDir()
 	repo := NewRepo(tmp)
 
-	if repo.AppExists("myapp", "production") {
+	if repo.AppExists("myapp", "production", "customer") {
 		t.Fatal("expected AppExists to return false for non-existent app")
 	}
 
-	appDir := repo.AppPath("myapp", "production")
+	appDir := repo.AppPath("myapp", "production", "customer")
 	if err := os.MkdirAll(appDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	if !repo.AppExists("myapp", "production") {
+	if !repo.AppExists("myapp", "production", "customer") {
 		t.Fatal("expected AppExists to return true after creating directory")
 	}
 }
@@ -69,12 +71,12 @@ func TestWriteApp(t *testing.T) {
 	}
 
 	// Write app.
-	if err := repo.WriteApp("myapp", "production", srcDir); err != nil {
+	if err := repo.WriteApp("myapp", "production", "agency", srcDir); err != nil {
 		t.Fatalf("WriteApp failed: %v", err)
 	}
 
 	// Verify files were copied.
-	appDir := repo.AppPath("myapp", "production")
+	appDir := repo.AppPath("myapp", "production", "agency")
 
 	data, err := os.ReadFile(filepath.Join(appDir, "deployment.yaml"))
 	if err != nil {
@@ -101,7 +103,7 @@ func TestWriteApp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := repo.WriteApp("myapp", "production", srcDir2); err != nil {
+	if err := repo.WriteApp("myapp", "production", "agency", srcDir2); err != nil {
 		t.Fatalf("WriteApp (second call) failed: %v", err)
 	}
 
@@ -124,7 +126,7 @@ func TestDeleteApp(t *testing.T) {
 	tmp := t.TempDir()
 	repo := NewRepo(tmp)
 
-	appDir := repo.AppPath("myapp", "preview")
+	appDir := repo.AppPath("myapp", "preview", "customer")
 	if err := os.MkdirAll(appDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -132,15 +134,15 @@ func TestDeleteApp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !repo.AppExists("myapp", "preview") {
+	if !repo.AppExists("myapp", "preview", "customer") {
 		t.Fatal("expected app to exist before delete")
 	}
 
-	if err := repo.DeleteApp("myapp", "preview"); err != nil {
+	if err := repo.DeleteApp("myapp", "preview", "customer"); err != nil {
 		t.Fatalf("DeleteApp failed: %v", err)
 	}
 
-	if repo.AppExists("myapp", "preview") {
+	if repo.AppExists("myapp", "preview", "customer") {
 		t.Fatal("expected app to not exist after delete")
 	}
 }
@@ -373,11 +375,11 @@ func TestWriteApp_NestedDirectories(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := repo.WriteApp("nested-app", "production", srcDir); err != nil {
+	if err := repo.WriteApp("nested-app", "production", "customer", srcDir); err != nil {
 		t.Fatalf("WriteApp failed: %v", err)
 	}
 
-	appDir := repo.AppPath("nested-app", "production")
+	appDir := repo.AppPath("nested-app", "production", "customer")
 
 	// Verify all files were copied at the right depth.
 	checks := []struct {
@@ -405,7 +407,7 @@ func TestDeleteApp_NonExistent(t *testing.T) {
 	repo := NewRepo(tmp)
 
 	// Deleting an app that doesn't exist should not return an error (RemoveAll is idempotent).
-	err := repo.DeleteApp("does-not-exist", "production")
+	err := repo.DeleteApp("does-not-exist", "production", "customer")
 	if err != nil {
 		t.Fatalf("DeleteApp on non-existent app returned error: %v", err)
 	}
@@ -418,28 +420,65 @@ func TestAppPath_AllEnvironments(t *testing.T) {
 		name     string
 		appName  string
 		env      string
+		scope    string
 		expected string
 	}{
-		{"preview lowercase", "myapp", "preview", "/tmp/test-repo/apps/previews/myapp"},
-		{"preview mixed case", "myapp", "Preview", "/tmp/test-repo/apps/previews/myapp"},
-		{"preview uppercase", "myapp", "PREVIEW", "/tmp/test-repo/apps/previews/myapp"},
-		{"staging lowercase", "myapp", "staging", "/tmp/test-repo/apps/previews/myapp"},
-		{"staging mixed case", "myapp", "Staging", "/tmp/test-repo/apps/previews/myapp"},
-		{"staging uppercase", "myapp", "STAGING", "/tmp/test-repo/apps/previews/myapp"},
-		{"production lowercase", "myapp", "production", "/tmp/test-repo/apps/myapp"},
-		{"production mixed case", "myapp", "Production", "/tmp/test-repo/apps/myapp"},
-		{"production uppercase", "myapp", "PRODUCTION", "/tmp/test-repo/apps/myapp"},
-		{"empty env", "myapp", "", "/tmp/test-repo/apps/myapp"},
-		{"other env", "myapp", "development", "/tmp/test-repo/apps/myapp"},
+		{"preview lowercase", "myapp", "preview", "customer", "/tmp/test-repo/apps/previews/myapp"},
+		{"preview mixed case", "myapp", "Preview", "agency", "/tmp/test-repo/apps/previews/myapp"},
+		{"preview uppercase", "myapp", "PREVIEW", "customer", "/tmp/test-repo/apps/previews/myapp"},
+		{"staging lowercase", "myapp", "staging", "customer", "/tmp/test-repo/apps/previews/myapp"},
+		{"staging mixed case", "myapp", "Staging", "agency", "/tmp/test-repo/apps/previews/myapp"},
+		{"staging uppercase", "myapp", "STAGING", "customer", "/tmp/test-repo/apps/previews/myapp"},
+		{"production customer", "myapp", "production", "customer", "/tmp/test-repo/apps/customer/myapp"},
+		{"production agency", "myapp", "production", "agency", "/tmp/test-repo/apps/agency/myapp"},
+		{"production private", "myapp", "production", "private", "/tmp/test-repo/apps/agency/myapp"},
+		{"Production customer", "myapp", "Production", "customer", "/tmp/test-repo/apps/customer/myapp"},
+		{"PRODUCTION agency", "myapp", "PRODUCTION", "agency", "/tmp/test-repo/apps/agency/myapp"},
+		{"empty env customer", "myapp", "", "customer", "/tmp/test-repo/apps/customer/myapp"},
+		{"empty env agency", "myapp", "", "agency", "/tmp/test-repo/apps/agency/myapp"},
+		{"other env customer", "myapp", "development", "customer", "/tmp/test-repo/apps/customer/myapp"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := repo.AppPath(tt.appName, tt.env)
+			got := repo.AppPath(tt.appName, tt.env, tt.scope)
 			if got != tt.expected {
-				t.Errorf("AppPath(%q, %q) = %q, want %q", tt.appName, tt.env, got, tt.expected)
+				t.Errorf("AppPath(%q, %q, %q) = %q, want %q", tt.appName, tt.env, tt.scope, got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestAppPath_ScopeCategories(t *testing.T) {
+	repo := NewRepo("/tmp/test-repo")
+
+	// Customer projects go to apps/customer/
+	got := repo.AppPath("client-site", "production", "customer")
+	if got != "/tmp/test-repo/apps/customer/client-site" {
+		t.Errorf("customer scope: got %q", got)
+	}
+
+	// Agency projects go to apps/agency/
+	got = repo.AppPath("internal-tool", "production", "agency")
+	if got != "/tmp/test-repo/apps/agency/internal-tool" {
+		t.Errorf("agency scope: got %q", got)
+	}
+
+	// Private projects also go to apps/agency/
+	got = repo.AppPath("side-project", "production", "private")
+	if got != "/tmp/test-repo/apps/agency/side-project" {
+		t.Errorf("private scope: got %q", got)
+	}
+
+	// Preview always goes to apps/previews/ regardless of scope
+	got = repo.AppPath("client-site", "preview", "customer")
+	if got != "/tmp/test-repo/apps/previews/client-site" {
+		t.Errorf("customer preview: got %q", got)
+	}
+
+	got = repo.AppPath("internal-tool", "preview", "agency")
+	if got != "/tmp/test-repo/apps/previews/internal-tool" {
+		t.Errorf("agency preview: got %q", got)
 	}
 }
 
