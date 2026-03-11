@@ -236,13 +236,11 @@ func TestGenerateDockerfile_Nextjs(t *testing.T) {
 	content := string(data)
 
 	for _, want := range []string{
-		"node:20-alpine",
+		"ghcr.io/fwartner/pnp/nextjs:latest",
 		".next/standalone",
 		".next/static",
-		"EXPOSE 3000",
 		"server.js",
-		"NEXT_TELEMETRY_DISABLED",
-		"nextjs",  // non-root user
+		"nextjs", // non-root user
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("Next.js Dockerfile should contain %q", want)
@@ -273,10 +271,9 @@ func TestGenerateDockerfile_Strapi(t *testing.T) {
 	content := string(data)
 
 	for _, want := range []string{
-		"node:20-alpine",
+		"ghcr.io/fwartner/pnp/strapi:latest",
 		"npm run build",
 		"\"start\"",
-		"EXPOSE 1337",
 		"strapi", // non-root user
 	} {
 		if !strings.Contains(content, want) {

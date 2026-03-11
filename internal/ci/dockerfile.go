@@ -171,7 +171,9 @@ CMD ["php", "artisan", "octane:start", "--server=roadrunner", "--host=0.0.0.0", 
 
 // --- Next.js ---
 
-const nextjsDockerfile = `FROM node:20-alpine AS deps
+const nextjsDockerfile = `FROM ghcr.io/fwartner/pnp/nextjs:latest AS base
+
+FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./
 RUN \
@@ -181,22 +183,15 @@ RUN \
     else npm install; \
     fi
 
-FROM node:20-alpine AS builder
+FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
-# Required for standalone output mode
-ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
-FROM node:20-alpine AS production
+FROM base AS production
 WORKDIR /app
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-
-RUN addgroup --system --gid 1001 nodejs \
-    && adduser --system --uid 1001 nextjs
 
 COPY --from=builder /app/public ./public
 
@@ -206,16 +201,14 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
 
-EXPOSE 3000
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
 CMD ["node", "server.js"]
 `
 
 // --- Strapi ---
 
-const strapiDockerfile = `FROM node:20-alpine AS deps
+const strapiDockerfile = `FROM ghcr.io/fwartner/pnp/strapi:latest AS base
+
+FROM base AS deps
 WORKDIR /app
 COPY package.json package-lock.json* yarn.lock* pnpm-lock.yaml* ./
 RUN \
@@ -225,25 +218,18 @@ RUN \
     else npm install; \
     fi
 
-FROM node:20-alpine AS builder
+FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ENV NODE_ENV=production
 RUN npm run build
 
-FROM node:20-alpine AS production
+FROM base AS production
 WORKDIR /app
-ENV NODE_ENV=production
-
-RUN addgroup --system --gid 1001 strapi \
-    && adduser --system --uid 1001 strapi
 
 COPY --from=builder --chown=strapi:strapi /app ./
 
 USER strapi
-
-EXPOSE 1337
 
 CMD ["npm", "run", "start"]
 `

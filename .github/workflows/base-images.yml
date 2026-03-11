@@ -26,6 +26,10 @@ jobs:
             context: docker/laravel-swoole
           - name: laravel-roadrunner
             context: docker/laravel-roadrunner
+          - name: nextjs
+            context: docker/nextjs
+          - name: strapi
+            context: docker/strapi
 
     steps:
       - uses: actions/checkout@v4
