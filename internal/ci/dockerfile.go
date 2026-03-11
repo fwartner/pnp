@@ -39,7 +39,7 @@ COPY --from=node-build /app/public/build ./public/build
 
 # Composer autoload
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-RUN composer dump-autoload --optimize && rm /usr/bin/composer
+RUN composer dump-autoload --optimize --ignore-platform-reqs && rm /usr/bin/composer
 
 # Storage & cache directories with correct permissions
 RUN mkdir -p storage/framework/{sessions,views,cache} \
@@ -79,7 +79,7 @@ COPY . .
 COPY --from=node-build /app/public/build ./public/build
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-RUN composer dump-autoload --optimize && rm /usr/bin/composer
+RUN composer dump-autoload --optimize --ignore-platform-reqs && rm /usr/bin/composer
 
 RUN mkdir -p storage/framework/{sessions,views,cache} \
     storage/logs bootstrap/cache \
@@ -118,7 +118,7 @@ COPY . .
 COPY --from=node-build /app/public/build ./public/build
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-RUN composer dump-autoload --optimize && rm /usr/bin/composer
+RUN composer dump-autoload --optimize --ignore-platform-reqs && rm /usr/bin/composer
 
 RUN mkdir -p storage/framework/{sessions,views,cache} \
     storage/logs bootstrap/cache \
@@ -157,7 +157,7 @@ COPY . .
 COPY --from=node-build /app/public/build ./public/build
 
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-RUN composer dump-autoload --optimize && rm /usr/bin/composer
+RUN composer dump-autoload --optimize --ignore-platform-reqs && rm /usr/bin/composer
 
 RUN mkdir -p storage/framework/{sessions,views,cache} \
     storage/logs bootstrap/cache \
