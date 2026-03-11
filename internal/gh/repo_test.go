@@ -85,6 +85,57 @@ func TestInitAndCreateRepo_AlreadyHasRemote(t *testing.T) {
 	}
 }
 
+func TestHasGitRepo_NestedSubdir(t *testing.T) {
+	dir := t.TempDir()
+	cmd := exec.Command("git", "init")
+	cmd.Dir = dir
+	if err := cmd.Run(); err != nil {
+		t.Skip("git not available")
+	}
+
+	// Create a nested subdirectory within the git repo.
+	subdir := filepath.Join(dir, "a", "b", "c")
+	if err := os.MkdirAll(subdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if !HasGitRepo(subdir) {
+		t.Error("expected HasGitRepo to return true for a subdirectory within a git repo")
+	}
+}
+
+func TestGHCLIAvailable(t *testing.T) {
+	// We can't control whether gh is installed, but calling GHCLIAvailable
+	// should not panic regardless.
+	result := GHCLIAvailable()
+	// Just verify it returns a bool (true or false) without panicking.
+	if result {
+		t.Log("gh CLI is available and authenticated")
+	} else {
+		t.Log("gh CLI is not available or not authenticated")
+	}
+}
+
+func TestInitAndCreateRepo_NoGitNoGH(t *testing.T) {
+	if _, err := exec.LookPath("gh"); err != nil {
+		t.Skip("gh CLI not available, skipping")
+	}
+
+	// Use a temporary directory that is NOT a git repo.
+	dir := t.TempDir()
+
+	// InitAndCreateRepo with a bogus repo name should fail
+	// (gh repo create will fail for a non-existent org/invalid name).
+	_, err := InitAndCreateRepo(CreateRepoOptions{
+		Name:    "this-org-does-not-exist-999/test-repo-xyz",
+		Dir:     dir,
+		Private: true,
+	})
+	if err == nil {
+		t.Fatal("expected InitAndCreateRepo to fail with invalid repo name")
+	}
+}
+
 func TestRunGit(t *testing.T) {
 	dir := t.TempDir()
 	if err := runGit(dir, "init"); err != nil {
