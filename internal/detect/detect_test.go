@@ -1,6 +1,7 @@
 package detect
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -184,5 +185,138 @@ func TestInferImageFromGitRemote_NoGit(t *testing.T) {
 	image := InferImageFromGitRemote(dir, "ghcr.io")
 	if image != "" {
 		t.Errorf("expected empty string, got %s", image)
+	}
+}
+
+// ---------- Additional DetectProjectType tests ----------
+
+func TestDetectLaravelWeb_WithConsoleSchedule(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "composer.json", `{"require":{"laravel/framework":"^11.0"}}`)
+	writeFile(t, dir, "artisan", "#!/usr/bin/env php\n")
+	writeFile(t, dir, "routes/console.php", `<?php
+
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('emails:send')->daily();
+`)
+
+	result := DetectProjectType(dir)
+	if result.Type != "laravel-web" {
+		t.Errorf("expected laravel-web, got %s", result.Type)
+	}
+	if result.Confidence != "high" {
+		t.Errorf("expected high confidence, got %s", result.Confidence)
+	}
+}
+
+func TestDetectNextjsFullstack_AllDBDeps(t *testing.T) {
+	dbPackages := []string{
+		"prisma",
+		"@prisma/client",
+		"pg",
+		"postgres",
+		"typeorm",
+		"drizzle-orm",
+		"knex",
+		"sequelize",
+	}
+
+	for _, pkg := range dbPackages {
+		t.Run(pkg, func(t *testing.T) {
+			dir := t.TempDir()
+			content := fmt.Sprintf(`{"dependencies":{"next":"14.0.0","%s":"^1.0.0"}}`, pkg)
+			writeFile(t, dir, "package.json", content)
+
+			result := DetectProjectType(dir)
+			if result.Type != "nextjs-fullstack" {
+				t.Errorf("expected nextjs-fullstack with dep %s, got %s", pkg, result.Type)
+			}
+			if result.Confidence != "high" {
+				t.Errorf("expected high confidence, got %s", result.Confidence)
+			}
+		})
+	}
+}
+
+func TestDetect_EmptyPackageJson(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "package.json", `{}`)
+
+	result := DetectProjectType(dir)
+	if result.Type != "unknown" {
+		t.Errorf("expected unknown, got %s", result.Type)
+	}
+}
+
+func TestDetect_MalformedPackageJson(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "package.json", `{not valid json!!!`)
+
+	result := DetectProjectType(dir)
+	if result.Type != "unknown" {
+		t.Errorf("expected unknown, got %s", result.Type)
+	}
+}
+
+func TestDetect_ComposerWithoutArtisan(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "composer.json", `{"require":{"laravel/framework":"^10.0"}}`)
+	// No artisan file
+
+	result := DetectProjectType(dir)
+	if result.Type != "unknown" {
+		t.Errorf("expected unknown, got %s", result.Type)
+	}
+}
+
+// ---------- Additional InferImageFromGitRemote tests ----------
+
+func TestInferImageFromGitRemote_HTTPSWithDotGit(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, ".git/config", `[core]
+	repositoryformatversion = 0
+[remote "origin"]
+	url = https://github.com/acme/webapp.git
+	fetch = +refs/heads/*:refs/remotes/origin/*
+`)
+
+	image := InferImageFromGitRemote(dir, "ghcr.io")
+	expected := "ghcr.io/acme/webapp"
+	if image != expected {
+		t.Errorf("expected %s, got %s", expected, image)
+	}
+}
+
+func TestInferImageFromGitRemote_HTTPSWithoutDotGit(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, ".git/config", `[core]
+	repositoryformatversion = 0
+[remote "origin"]
+	url = https://github.com/acme/webapp
+	fetch = +refs/heads/*:refs/remotes/origin/*
+`)
+
+	image := InferImageFromGitRemote(dir, "ghcr.io")
+	expected := "ghcr.io/acme/webapp"
+	if image != expected {
+		t.Errorf("expected %s, got %s", expected, image)
+	}
+}
+
+// ---------- Additional InferProjectName tests ----------
+
+func TestInferProjectName_NestedPath(t *testing.T) {
+	name := InferProjectName("/home/user/projects/deep/nested/my-app")
+	if name != "my-app" {
+		t.Errorf("expected my-app, got %s", name)
+	}
+}
+
+func TestInferProjectName_TrailingSlash(t *testing.T) {
+	// filepath.Base handles trailing slash by stripping it first
+	name := InferProjectName("/some/path/my-app/")
+	if name != "my-app" {
+		t.Errorf("expected my-app, got %s", name)
 	}
 }
