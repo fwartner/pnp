@@ -505,6 +505,29 @@ spec:
     secretType: Opaque
 `
 
+// ---------- Kubernetes Secrets (generated credentials) ----------
+
+const dbCredentialsSecretYAML = `apiVersion: v1
+kind: Secret
+metadata:
+  name: << .Name >>-db-credentials
+  namespace: << .Namespace >>
+type: kubernetes.io/basic-auth
+stringData:
+  username: << .DBUsername >>
+  password: << .DBPassword >>
+`
+
+const laravelAppSecretYAML = `apiVersion: v1
+kind: Secret
+metadata:
+  name: << .Name >>-env
+  namespace: << .Namespace >>
+type: Opaque
+stringData:
+  APP_KEY: << .AppKey >>
+`
+
 // hasDB returns true if the project type requires a database.
 func hasDB(projectType string) bool {
 	switch projectType {
@@ -606,13 +629,27 @@ func Render(projectType string, data TemplateData, outDir string) error {
 		}
 	}
 
-	// templates/infisical-secrets.yaml — only for types with DB
-	if hasDB(projectType) {
+	// templates/infisical-secrets.yaml — only for types with DB and Infisical configured
+	if hasDB(projectType) && data.InfisicalProjectSlug != "" {
 		tmpl := infisicalDBOnlyYAML
 		if isLaravel(projectType) {
 			tmpl = infisicalDBAndMailYAML
 		}
 		if err := renderTemplate(tmpl, filepath.Join(outDir, "templates", "infisical-secrets.yaml"), data); err != nil {
+			return err
+		}
+	}
+
+	// templates/db-credentials.yaml — generated DB credentials for CNPG bootstrap
+	if hasDB(projectType) && data.DBPassword != "" {
+		if err := renderTemplate(dbCredentialsSecretYAML, filepath.Join(outDir, "templates", "db-credentials.yaml"), data); err != nil {
+			return err
+		}
+	}
+
+	// templates/app-secret.yaml — generated app secret (APP_KEY for Laravel)
+	if isLaravel(projectType) && data.AppKey != "" {
+		if err := renderTemplate(laravelAppSecretYAML, filepath.Join(outDir, "templates", "app-secret.yaml"), data); err != nil {
 			return err
 		}
 	}

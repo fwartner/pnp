@@ -12,6 +12,7 @@ import (
 	"github.com/fwartner/pnp/internal/detect"
 	"github.com/fwartner/pnp/internal/gh"
 	"github.com/fwartner/pnp/internal/gitops"
+	"github.com/fwartner/pnp/internal/secrets"
 	"github.com/fwartner/pnp/internal/templates"
 	"github.com/fwartner/pnp/internal/wizard"
 	"github.com/spf13/cobra"
@@ -86,7 +87,40 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 4. Build TemplateData
+	// 5. Generate secrets if not already set
+	secretsChanged := false
+	isLaravel := projCfg.Type == "laravel-web" || projCfg.Type == "laravel-api"
+	if isLaravel && projCfg.Secrets.AppKey == "" {
+		key, err := secrets.GenerateAppKey()
+		if err != nil {
+			return fmt.Errorf("generating APP_KEY: %w", err)
+		}
+		projCfg.Secrets.AppKey = key
+		secretsChanged = true
+		fmt.Println(successStyle.Render("Generated APP_KEY"))
+	}
+
+	hasDB := projCfg.Type == "laravel-web" || projCfg.Type == "laravel-api" ||
+		projCfg.Type == "nextjs-fullstack" || projCfg.Type == "strapi"
+	if hasDB && projCfg.Secrets.DBPassword == "" {
+		pw, err := secrets.GeneratePassword(32)
+		if err != nil {
+			return fmt.Errorf("generating DB password: %w", err)
+		}
+		projCfg.Secrets.DBPassword = pw
+		secretsChanged = true
+		fmt.Println(successStyle.Render("Generated database password"))
+	}
+
+	// Persist generated secrets immediately so they survive re-runs
+	if secretsChanged {
+		if err := config.SaveProjectConfig(projCfg); err != nil {
+			fmt.Println(errorStyle.Render("Failed to save secrets to .cluster.yaml: " + err.Error()))
+			return err
+		}
+	}
+
+	// 6. Build TemplateData
 	namespace := namespaceFromConfig(projCfg)
 	data := buildTemplateData(projCfg, globalCfg)
 

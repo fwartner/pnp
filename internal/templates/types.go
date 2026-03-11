@@ -9,10 +9,11 @@ type TemplateData struct {
 	Domain    string
 	Image     string
 	Tag       string
-	AppKey    string
-	DBName    string
-	DBUsername string
-	DBSize    string
+	AppKey     string
+	DBName     string
+	DBUsername  string
+	DBPassword string
+	DBSize     string
 
 	RedisEnabled       bool
 	QueueEnabled       bool

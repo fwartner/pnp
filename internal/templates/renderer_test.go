@@ -18,6 +18,7 @@ func testData() TemplateData {
 		AppKey:               "base64:testkey123",
 		DBName:               "my_app_db",
 		DBUsername:            "my_app_user",
+		DBPassword:           "supersecretpassword123",
 		DBSize:               "5Gi",
 		RedisEnabled:         true,
 		QueueEnabled:         true,
@@ -91,6 +92,35 @@ func TestRenderLaravelWeb(t *testing.T) {
 	if !strings.Contains(string(infisicalContent), "mail-infisical") {
 		t.Errorf("infisical-secrets.yaml missing mail infisical secret for laravel type")
 	}
+
+	// db-credentials.yaml should exist with generated password
+	dbCredContent, err := os.ReadFile(filepath.Join(outDir, "templates", "db-credentials.yaml"))
+	if err != nil {
+		t.Fatalf("reading db-credentials.yaml: %v", err)
+	}
+	dbCredStr := string(dbCredContent)
+	if !strings.Contains(dbCredStr, "my-app-db-credentials") {
+		t.Errorf("db-credentials.yaml missing secret name")
+	}
+	if !strings.Contains(dbCredStr, "supersecretpassword123") {
+		t.Errorf("db-credentials.yaml missing password")
+	}
+	if !strings.Contains(dbCredStr, "kubernetes.io/basic-auth") {
+		t.Errorf("db-credentials.yaml missing secret type")
+	}
+
+	// app-secret.yaml should exist with APP_KEY for Laravel
+	appSecretContent, err := os.ReadFile(filepath.Join(outDir, "templates", "app-secret.yaml"))
+	if err != nil {
+		t.Fatalf("reading app-secret.yaml: %v", err)
+	}
+	appSecretStr := string(appSecretContent)
+	if !strings.Contains(appSecretStr, "base64:testkey123") {
+		t.Errorf("app-secret.yaml missing APP_KEY")
+	}
+	if !strings.Contains(appSecretStr, "my-app-env") {
+		t.Errorf("app-secret.yaml missing secret name")
+	}
 }
 
 func TestRenderNextjsStatic(t *testing.T) {
@@ -120,6 +150,16 @@ func TestRenderNextjsStatic(t *testing.T) {
 	// infisical-secrets.yaml should NOT exist
 	if _, err := os.Stat(filepath.Join(outDir, "templates", "infisical-secrets.yaml")); !os.IsNotExist(err) {
 		t.Errorf("infisical-secrets.yaml should not exist for nextjs-static")
+	}
+
+	// db-credentials.yaml should NOT exist
+	if _, err := os.Stat(filepath.Join(outDir, "templates", "db-credentials.yaml")); !os.IsNotExist(err) {
+		t.Errorf("db-credentials.yaml should not exist for nextjs-static")
+	}
+
+	// app-secret.yaml should NOT exist
+	if _, err := os.Stat(filepath.Join(outDir, "templates", "app-secret.yaml")); !os.IsNotExist(err) {
+		t.Errorf("app-secret.yaml should not exist for nextjs-static")
 	}
 }
 

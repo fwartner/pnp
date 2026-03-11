@@ -25,6 +25,12 @@ type ProjectConfig struct {
 	Infisical   ProjectInfisical  `yaml:"infisical"`
 	Resources   ResourcesConfig   `yaml:"resources"`
 	CI          CIConfig          `yaml:"ci"`
+	Secrets     SecretsConfig     `yaml:"secrets,omitempty"`
+}
+
+type SecretsConfig struct {
+	AppKey     string `yaml:"appKey,omitempty"`
+	DBPassword string `yaml:"dbPassword,omitempty"`
 }
 
 type DatabaseConfig struct {
