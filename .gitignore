@@ -2,3 +2,6 @@ pnp
 dist/
 .cluster.yaml
 *.exe
+docs/
+docs/plans/
+/docs
