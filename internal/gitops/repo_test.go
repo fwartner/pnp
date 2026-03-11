@@ -171,6 +171,8 @@ func TestCommitAndPush(t *testing.T) {
 
 	run("git", "init")
 	run("git", "checkout", "-b", "main")
+	run("git", "config", "user.email", "test@test.com")
+	run("git", "config", "user.name", "test")
 	if err := os.WriteFile(filepath.Join(tmp, "README.md"), []byte("init"), 0o644); err != nil {
 		t.Fatal(err)
 	}
