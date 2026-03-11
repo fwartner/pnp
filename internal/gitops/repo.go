@@ -129,6 +129,121 @@ func (r *Repo) CreatePR(title, body, branch string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// AppInfo holds metadata about a deployed application.
+type AppInfo struct {
+	Name        string
+	Scope       string
+	Environment string
+	Domain      string
+	Type        string
+}
+
+// Commit holds a git commit's hash and message.
+type Commit struct {
+	Hash    string
+	Message string
+}
+
+// ListApps walks the gitops repo's apps directory and returns info about each app.
+func (r *Repo) ListApps() ([]AppInfo, error) {
+	var apps []AppInfo
+
+	scopeDirs := []struct {
+		dir   string
+		scope string
+		env   string
+	}{
+		{"apps/customer", "customer", "production"},
+		{"apps/agency", "agency", "production"},
+		{"apps/previews", "previews", "preview"},
+	}
+
+	for _, sd := range scopeDirs {
+		appsDir := filepath.Join(r.Path, sd.dir)
+		entries, err := os.ReadDir(appsDir)
+		if err != nil {
+			continue // directory may not exist
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+
+			app := AppInfo{
+				Name:        entry.Name(),
+				Scope:       sd.scope,
+				Environment: sd.env,
+			}
+
+			// Try to parse values.yaml for domain
+			valuesPath := filepath.Join(appsDir, entry.Name(), "values.yaml")
+			if data, err := os.ReadFile(valuesPath); err == nil {
+				for _, line := range strings.Split(string(data), "\n") {
+					line = strings.TrimSpace(line)
+					if strings.HasPrefix(line, "subdomain:") {
+						app.Domain = strings.TrimSpace(strings.TrimPrefix(line, "subdomain:"))
+					}
+				}
+			}
+
+			// Try to parse Chart.yaml for type
+			chartPath := filepath.Join(appsDir, entry.Name(), "Chart.yaml")
+			if data, err := os.ReadFile(chartPath); err == nil {
+				for _, line := range strings.Split(string(data), "\n") {
+					line = strings.TrimSpace(line)
+					if strings.HasPrefix(line, "name:") {
+						app.Type = strings.TrimSpace(strings.TrimPrefix(line, "name:"))
+					}
+				}
+			}
+
+			apps = append(apps, app)
+		}
+	}
+
+	return apps, nil
+}
+
+// GitLog returns the most recent commits affecting the given path.
+func (r *Repo) GitLog(appPath string, limit int) ([]Commit, error) {
+	relPath, err := filepath.Rel(r.Path, appPath)
+	if err != nil {
+		relPath = appPath
+	}
+
+	cmd := exec.Command("git", "log", "--oneline", fmt.Sprintf("-n%d", limit), "--", relPath)
+	cmd.Dir = r.Path
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("git log: %w", err)
+	}
+
+	var commits []Commit
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, " ", 2)
+		c := Commit{Hash: parts[0]}
+		if len(parts) > 1 {
+			c.Message = parts[1]
+		}
+		commits = append(commits, c)
+	}
+	return commits, nil
+}
+
+// Revert creates a revert commit for the given commit hash.
+func (r *Repo) Revert(hash string) error {
+	cmd := exec.Command("git", "revert", "--no-edit", hash)
+	cmd.Dir = r.Path
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git revert %s: %s: %w", hash, strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
 // git runs a git command inside the repository directory.
 func (r *Repo) git(args ...string) error {
 	cmd := exec.Command("git", args...)

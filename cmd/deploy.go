@@ -6,22 +6,17 @@ import (
 	"path/filepath"
 
 	"github.com/charmbracelet/huh"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/fwartner/pnp/internal/ci"
 	"github.com/fwartner/pnp/internal/config"
 	"github.com/fwartner/pnp/internal/detect"
+	"github.com/fwartner/pnp/internal/doctor"
 	"github.com/fwartner/pnp/internal/gh"
 	"github.com/fwartner/pnp/internal/gitops"
+	"github.com/fwartner/pnp/internal/progress"
 	"github.com/fwartner/pnp/internal/secrets"
 	"github.com/fwartner/pnp/internal/templates"
 	"github.com/fwartner/pnp/internal/wizard"
 	"github.com/spf13/cobra"
-)
-
-var (
-	titleStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("99"))
-	successStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("42"))
-	errorStyle   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
 )
 
 var deployCmd = &cobra.Command{
@@ -32,18 +27,36 @@ var deployCmd = &cobra.Command{
 }
 
 var (
-	flagPR     bool
-	flagWithCI bool
+	flagPR           bool
+	flagWithCI       bool
+	flagAdvanced     bool
+	flagWithPreviews bool
 )
 
 func init() {
 	deployCmd.Flags().BoolVar(&flagPR, "pr", false, "Create a pull request instead of pushing directly")
 	deployCmd.Flags().BoolVar(&flagWithCI, "with-ci", false, "Generate GitHub Actions deploy workflow")
+	deployCmd.Flags().BoolVar(&flagAdvanced, "advanced", false, "Run the full advanced wizard with all options")
+	deployCmd.Flags().BoolVar(&flagWithPreviews, "with-previews", false, "Generate preview environment workflow for PRs")
 	rootCmd.AddCommand(deployCmd)
 }
 
 func runDeploy(cmd *cobra.Command, args []string) error {
 	fmt.Println(titleStyle.Render("== PnP Deploy =="))
+
+	// 0. Run doctor checks for critical prerequisites
+	results := doctor.RunAll(false)
+	if doctor.HasCriticalFailure(results) {
+		fmt.Println()
+		for _, r := range results {
+			if !r.OK && r.Critical {
+				fmt.Printf("  %s  %s: %s\n", errorStyle.Render("✗"), r.Name, r.Message)
+			}
+		}
+		fmt.Println()
+		fmt.Println(errorStyle.Render("Critical prerequisites missing. Run 'pnp doctor' to fix."))
+		return fmt.Errorf("prerequisites check failed")
+	}
 
 	// 1. Load global config
 	globalCfg, err := config.LoadGlobalConfig()
@@ -74,8 +87,13 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		projectName := detect.InferProjectName(cwd)
 		inferredImage := detect.InferImageFromGitRemote(cwd, globalCfg.Defaults.ImageRegistry)
 
-		fmt.Println(titleStyle.Render("Running setup wizard..."))
-		projCfg, err = wizard.Run(detected, inferredImage, projectName, globalCfg)
+		if flagAdvanced {
+			fmt.Println(titleStyle.Render("Running advanced wizard..."))
+			projCfg, err = wizard.RunAdvanced(detected, inferredImage, projectName, globalCfg)
+		} else {
+			fmt.Println(titleStyle.Render("Running setup wizard..."))
+			projCfg, err = wizard.RunBasic(detected, inferredImage, projectName, globalCfg)
+		}
 		if err != nil {
 			fmt.Println(errorStyle.Render("Wizard failed: " + err.Error()))
 			return err
@@ -87,168 +105,186 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 5. Generate secrets if not already set
-	secretsChanged := false
-	isLaravel := projCfg.Type == "laravel-web" || projCfg.Type == "laravel-api"
-	if isLaravel && projCfg.Secrets.AppKey == "" {
-		key, err := secrets.GenerateAppKey()
-		if err != nil {
-			return fmt.Errorf("generating APP_KEY: %w", err)
-		}
-		projCfg.Secrets.AppKey = key
-		secretsChanged = true
-		fmt.Println(successStyle.Render("Generated APP_KEY"))
-	}
-
-	hasDB := projCfg.Type == "laravel-web" || projCfg.Type == "laravel-api" ||
-		projCfg.Type == "nextjs-fullstack" || projCfg.Type == "strapi"
-	if hasDB && projCfg.Secrets.DBPassword == "" {
-		pw, err := secrets.GeneratePassword(32)
-		if err != nil {
-			return fmt.Errorf("generating DB password: %w", err)
-		}
-		projCfg.Secrets.DBPassword = pw
-		secretsChanged = true
-		fmt.Println(successStyle.Render("Generated database password"))
-	}
-
-	// Persist generated secrets immediately so they survive re-runs
-	if secretsChanged {
-		if err := config.SaveProjectConfig(projCfg); err != nil {
-			fmt.Println(errorStyle.Render("Failed to save secrets to .cluster.yaml: " + err.Error()))
-			return err
-		}
-	}
-
-	// 6. Build TemplateData
+	// Variables used across steps
+	var tmpDir string
 	namespace := namespaceFromConfig(projCfg)
-	data := buildTemplateData(projCfg, globalCfg)
-
-	// 6. Render templates to temp dir
-	fmt.Println(titleStyle.Render("Rendering templates..."))
-	tmpDir, err := os.MkdirTemp("", "pnp-deploy-*")
-	if err != nil {
-		return fmt.Errorf("creating temp dir: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	if err := templates.Render(projCfg.Type, data, tmpDir); err != nil {
-		fmt.Println(errorStyle.Render("Template rendering failed: " + err.Error()))
-		return err
-	}
-	fmt.Println(successStyle.Render("Templates rendered"))
-
-	// 7. Write to gitops repo
-	if globalCfg.GitopsRepo == "" {
-		return fmt.Errorf("gitopsRepo is not set in ~/.pnp.yaml")
-	}
-
-	fmt.Println(titleStyle.Render("Writing to gitops repo..."))
-	repo := gitops.NewRepo(globalCfg.GitopsRepo)
-
-	if err := repo.Pull(); err != nil {
-		fmt.Printf("  Warning: git pull failed: %v\n", err)
-	}
-
-	if err := repo.WriteApp(projCfg.Name, projCfg.Environment, projCfg.Scope, tmpDir); err != nil {
-		fmt.Println(errorStyle.Render("Failed to write app: " + err.Error()))
-		return err
-	}
-	fmt.Println(successStyle.Render("Manifests written to gitops repo"))
-
-	// 8. Commit and push (or create PR)
-	commitMsg := fmt.Sprintf("deploy(%s): %s to %s", projCfg.Environment, projCfg.Name, namespace)
-
-	if flagPR {
-		fmt.Println(titleStyle.Render("Creating pull request..."))
-		branch := fmt.Sprintf("deploy/%s-%s", projCfg.Name, projCfg.Environment)
-		if err := repo.CreateBranchAndPush(branch, commitMsg); err != nil {
-			fmt.Println(errorStyle.Render("Failed to create branch: " + err.Error()))
-			return err
-		}
-
-		prURL, err := repo.CreatePR(commitMsg, fmt.Sprintf("Automated deploy of %s to %s", projCfg.Name, projCfg.Environment), branch)
-		if err != nil {
-			fmt.Println(errorStyle.Render("Failed to create PR: " + err.Error()))
-			return err
-		}
-		fmt.Println(successStyle.Render("Pull request created: " + prURL))
-	} else {
-		fmt.Println(titleStyle.Render("Committing and pushing..."))
-		if err := repo.CommitChanges(commitMsg); err != nil {
-			fmt.Println(errorStyle.Render("Failed to commit: " + err.Error()))
-			return err
-		}
-		if err := repo.Push(); err != nil {
-			fmt.Println(errorStyle.Render("Failed to push: " + err.Error()))
-			return err
-		}
-		fmt.Println(successStyle.Render("Changes pushed to gitops repo"))
-	}
-
-	// 10. Generate GitHub Actions workflow and Dockerfile
-	ciDir := filepath.Join(cwd, ".github", "workflows")
-	workflowExists := false
-	if _, err := os.Stat(filepath.Join(ciDir, "deploy.yml")); err == nil {
-		workflowExists = true
-	}
-
 	var ciFilesGenerated []string
 
-	if !workflowExists || flagWithCI {
-		fmt.Println(titleStyle.Render("Generating CI/CD pipeline..."))
-		if err := ci.GenerateWorkflow(projCfg.Type, projCfg.Image, globalCfg.GitopsRemote, projCfg.Name, cwd); err != nil {
-			fmt.Println(errorStyle.Render("Failed to generate CI workflow: " + err.Error()))
-			return err
-		}
-		ciFilesGenerated = append(ciFilesGenerated, ".github/workflows/deploy.yml")
-		fmt.Println(successStyle.Render("GitHub Actions workflow generated"))
+	// Build tracked steps
+	tracker := progress.NewTracker(
+		progress.Step{
+			Name: "Generate secrets",
+			Action: func() error {
+				secretsChanged := false
+				isLaravel := projCfg.Type == "laravel-web" || projCfg.Type == "laravel-api"
+				if isLaravel && projCfg.Secrets.AppKey == "" {
+					key, err := secrets.GenerateAppKey()
+					if err != nil {
+						return fmt.Errorf("generating APP_KEY: %w", err)
+					}
+					projCfg.Secrets.AppKey = key
+					secretsChanged = true
+				}
 
-		dockerfilePath := filepath.Join(cwd, "Dockerfile")
-		if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
-			if err := ci.GenerateDockerfile(projCfg.Type, projCfg.Octane, cwd); err != nil {
-				fmt.Println(errorStyle.Render("Failed to generate Dockerfile: " + err.Error()))
-				return err
-			}
-			ciFilesGenerated = append(ciFilesGenerated, "Dockerfile")
-			// .dockerignore is also generated if missing
-			if _, err := os.Stat(filepath.Join(cwd, ".dockerignore")); err == nil {
-				ciFilesGenerated = append(ciFilesGenerated, ".dockerignore")
-			}
-			fmt.Println(successStyle.Render("Dockerfile generated"))
-		}
+				hasDB := projCfg.Type == "laravel-web" || projCfg.Type == "laravel-api" ||
+					projCfg.Type == "nextjs-fullstack" || projCfg.Type == "strapi"
+				if hasDB && projCfg.Secrets.DBPassword == "" {
+					pw, err := secrets.GeneratePassword(32)
+					if err != nil {
+						return fmt.Errorf("generating DB password: %w", err)
+					}
+					projCfg.Secrets.DBPassword = pw
+					secretsChanged = true
+				}
+
+				if secretsChanged {
+					return config.SaveProjectConfig(projCfg)
+				}
+				return nil
+			},
+		},
+		progress.Step{
+			Name: "Render templates",
+			Action: func() error {
+				var err error
+				tmpDir, err = os.MkdirTemp("", "pnp-deploy-*")
+				if err != nil {
+					return fmt.Errorf("creating temp dir: %w", err)
+				}
+				data := buildTemplateData(projCfg, globalCfg)
+				return templates.Render(projCfg.Type, data, tmpDir)
+			},
+		},
+		progress.Step{
+			Name: "Pull gitops repo",
+			Action: func() error {
+				if globalCfg.GitopsRepo == "" {
+					return fmt.Errorf("gitopsRepo is not set in ~/.pnp.yaml")
+				}
+				repo := gitops.NewRepo(globalCfg.GitopsRepo)
+				_ = repo.Pull() // non-fatal
+				return nil
+			},
+		},
+		progress.Step{
+			Name: "Write manifests",
+			Action: func() error {
+				repo := gitops.NewRepo(globalCfg.GitopsRepo)
+				return repo.WriteApp(projCfg.Name, projCfg.Environment, projCfg.Scope, tmpDir)
+			},
+		},
+		progress.Step{
+			Name: "Push to gitops",
+			Action: func() error {
+				repo := gitops.NewRepo(globalCfg.GitopsRepo)
+				commitMsg := fmt.Sprintf("deploy(%s): %s to %s", projCfg.Environment, projCfg.Name, namespace)
+
+				if flagPR {
+					branch := fmt.Sprintf("deploy/%s-%s", projCfg.Name, projCfg.Environment)
+					if err := repo.CreateBranchAndPush(branch, commitMsg); err != nil {
+						return err
+					}
+					prURL, err := repo.CreatePR(commitMsg, fmt.Sprintf("Automated deploy of %s to %s", projCfg.Name, projCfg.Environment), branch)
+					if err != nil {
+						return err
+					}
+					fmt.Printf("\r  Pull request: %s\n", prURL)
+					return nil
+				}
+
+				if err := repo.CommitChanges(commitMsg); err != nil {
+					return err
+				}
+				return repo.Push()
+			},
+		},
+		progress.Step{
+			Name: "Generate CI/CD pipeline",
+			Action: func() error {
+				ciDir := filepath.Join(cwd, ".github", "workflows")
+				workflowExists := false
+				if _, err := os.Stat(filepath.Join(ciDir, "deploy.yml")); err == nil {
+					workflowExists = true
+				}
+
+				if !workflowExists || flagWithCI {
+					if err := ci.GenerateWorkflow(projCfg.Type, projCfg.Image, globalCfg.GitopsRemote, projCfg.Name, cwd); err != nil {
+						return err
+					}
+					ciFilesGenerated = append(ciFilesGenerated, ".github/workflows/deploy.yml")
+
+					dockerfilePath := filepath.Join(cwd, "Dockerfile")
+					if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
+						if err := ci.GenerateDockerfile(projCfg.Type, projCfg.Octane, cwd); err != nil {
+							return err
+						}
+						ciFilesGenerated = append(ciFilesGenerated, "Dockerfile")
+						if _, err := os.Stat(filepath.Join(cwd, ".dockerignore")); err == nil {
+							ciFilesGenerated = append(ciFilesGenerated, ".dockerignore")
+						}
+					}
+				}
+
+				// Generate preview workflow if requested
+				if flagWithPreviews {
+					scopeDomain := globalCfg.EffectiveDomain(projCfg.Scope)
+					if err := ci.GeneratePreviewWorkflow(projCfg.Image, globalCfg.GitopsRemote, projCfg.Name, scopeDomain, cwd); err != nil {
+						return err
+					}
+					ciFilesGenerated = append(ciFilesGenerated, ".github/workflows/preview.yml")
+				}
+
+				return nil
+			},
+		},
+		progress.Step{
+			Name: "Save configuration",
+			Action: func() error {
+				if !existingConfig {
+					if err := config.SaveProjectConfig(projCfg); err != nil {
+						return err
+					}
+					ciFilesGenerated = append(ciFilesGenerated, ".cluster.yaml")
+				}
+				return nil
+			},
+		},
+		progress.Step{
+			Name: "Commit CI files",
+			Action: func() error {
+				if len(ciFilesGenerated) > 0 && gh.HasGitRepo(cwd) && gh.HasGitRemote(cwd) {
+					if err := gh.CommitAndPush(cwd, "ci: add pnp deployment pipeline", ciFilesGenerated...); err != nil {
+						return nil // non-fatal, user can commit manually
+					}
+				}
+				return nil
+			},
+		},
+		progress.Step{
+			Name: "Configure GITOPS_TOKEN",
+			Action: func() error {
+				if gh.GHCLIAvailable() && gh.HasGitRepo(cwd) && gh.HasGitRemote(cwd) {
+					_ = ensureGitopsToken(cwd) // non-fatal
+				}
+				return nil
+			},
+		},
+	)
+
+	fmt.Println()
+	if err := tracker.Run(); err != nil {
+		fmt.Println()
+		fmt.Println(errorStyle.Render("Deploy failed: " + err.Error()))
+		return err
 	}
 
-	// 11. Save .cluster.yaml if not existing
-	if !existingConfig {
-		if err := config.SaveProjectConfig(projCfg); err != nil {
-			fmt.Println(errorStyle.Render("Failed to save .cluster.yaml: " + err.Error()))
-			return err
-		}
-		ciFilesGenerated = append(ciFilesGenerated, ".cluster.yaml")
-		fmt.Println(successStyle.Render("Saved .cluster.yaml"))
+	// Clean up temp dir
+	if tmpDir != "" {
+		os.RemoveAll(tmpDir)
 	}
 
-	// 12. Auto-commit and push generated CI files to the project repo
-	if len(ciFilesGenerated) > 0 && gh.HasGitRepo(cwd) && gh.HasGitRemote(cwd) {
-		fmt.Println(titleStyle.Render("Committing CI/CD files to project repo..."))
-		if err := gh.CommitAndPush(cwd, "ci: add pnp deployment pipeline", ciFilesGenerated...); err != nil {
-			fmt.Println(errorStyle.Render("Failed to commit CI files: " + err.Error()))
-			fmt.Println("  You can manually commit and push the generated files.")
-		} else {
-			fmt.Println(successStyle.Render("CI/CD files committed and pushed"))
-		}
-	}
-
-	// 13. Ensure GITOPS_TOKEN is configured on the project repo
-	if gh.GHCLIAvailable() && gh.HasGitRepo(cwd) && gh.HasGitRemote(cwd) {
-		if err := ensureGitopsToken(cwd); err != nil {
-			fmt.Printf("  Warning: could not configure GITOPS_TOKEN: %v\n", err)
-			fmt.Println("  The CI deploy job needs a GITOPS_TOKEN secret to push to the gitops repo.")
-		}
-	}
-
-	fmt.Println(successStyle.Render("\nDeploy complete! Push to main to trigger automatic builds and deployments."))
+	fmt.Println()
+	fmt.Println(successStyle.Render("Deploy complete! Push to main to trigger automatic builds and deployments."))
 	return nil
 }
 

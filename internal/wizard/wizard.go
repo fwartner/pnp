@@ -14,49 +14,54 @@ var environments = []string{"preview", "staging", "production"}
 var scopes = []string{"customer", "private", "agency"}
 var octaneServers = []string{"frankenphp", "swoole", "roadrunner"}
 
-// Run executes the interactive wizard and returns a filled ProjectConfig.
+// Run is an alias for RunAdvanced for backwards compatibility.
 func Run(detected detect.DetectionResult, inferredImage string, projectName string, globalCfg config.GlobalConfig) (config.ProjectConfig, error) {
-	cfg := config.ProjectConfig{
-		Name:        projectName,
-		Scope:       "customer",
-		Type:        detected.Type,
-		Environment: "preview",
-		Image:       inferredImage,
-		Database: config.DatabaseConfig{
-			Enabled: true,
-			Size:    "5Gi",
-			Name:    "app",
-		},
-		Redis: config.RedisConfig{
-			Enabled: true,
-		},
-		Queue: config.QueueConfig{
-			Enabled:  true,
-			Replicas: 1,
-		},
-		Scheduler: config.SchedulerConfig{
-			Enabled: true,
-		},
-		Horizon: config.HorizonConfig{
-			Enabled: false,
-		},
-		Reverb: config.ReverbConfig{
-			Enabled: false,
-			Port:    8080,
-		},
-		Octane: config.OctaneConfig{
-			Enabled: false,
-			Server:  "frankenphp",
-		},
-		Persistence: config.PersistenceConfig{
-			Enabled: true,
-			Size:    "5Gi",
-		},
-		Resources: config.ResourcesConfig{
-			CPU:    "100m",
-			Memory: "256Mi",
-		},
+	return RunAdvanced(detected, inferredImage, projectName, globalCfg)
+}
+
+// RunBasic executes a simplified 4-question wizard with smart defaults.
+func RunBasic(detected detect.DetectionResult, inferredImage string, projectName string, globalCfg config.GlobalConfig) (config.ProjectConfig, error) {
+	cfg := newDefaultConfig(detected, inferredImage, projectName)
+
+	// Only 4 questions: name, type, scope, environment
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Project name").
+				Value(&cfg.Name),
+			huh.NewSelect[string]().
+				Title("Project type").
+				Description(fmt.Sprintf("Detected: %s (%s confidence)", detected.Type, detected.Confidence)).
+				Options(huh.NewOptions(projectTypes...)...).
+				Value(&cfg.Type),
+			huh.NewSelect[string]().
+				Title("Project scope").
+				Description("Determines default org, domain, visibility, and Infisical project").
+				Options(
+					huh.NewOption("Customer project", "customer"),
+					huh.NewOption("Private / internal project", "private"),
+					huh.NewOption("Agency project (Pixel & Process)", "agency"),
+				).
+				Value(&cfg.Scope),
+			huh.NewSelect[string]().
+				Title("Environment").
+				Options(huh.NewOptions(environments...)...).
+				Value(&cfg.Environment),
+		),
+	).Run()
+	if err != nil {
+		return cfg, err
 	}
+
+	// Apply all smart defaults based on the 4 answers
+	ApplyDefaults(&cfg, globalCfg)
+
+	return cfg, nil
+}
+
+// RunAdvanced executes the full 7-step interactive wizard with all options.
+func RunAdvanced(detected detect.DetectionResult, inferredImage string, projectName string, globalCfg config.GlobalConfig) (config.ProjectConfig, error) {
+	cfg := newDefaultConfig(detected, inferredImage, projectName)
 
 	// Step 1: Scope and basic info
 	err := huh.NewForm(
@@ -292,6 +297,110 @@ func Run(detected detect.DetectionResult, inferredImage string, projectName stri
 	}
 
 	return cfg, nil
+}
+
+// ApplyDefaults fills in smart defaults based on the project type, scope, and environment.
+func ApplyDefaults(cfg *config.ProjectConfig, globalCfg config.GlobalConfig) {
+	scopeDomain := globalCfg.EffectiveDomain(cfg.Scope)
+	scopeRegistry := globalCfg.EffectiveImageRegistry(cfg.Scope)
+	scopeOrg := globalCfg.EffectiveGithubOrg(cfg.Scope)
+	scopeInfisicalSlug := globalCfg.EffectiveInfisicalProjectSlug(cfg.Scope)
+
+	// Domain
+	cfg.Domain = defaultDomain(cfg.Name, cfg.Environment, scopeDomain)
+
+	// Image
+	if cfg.Image == "" && scopeOrg != "" {
+		cfg.Image = scopeRegistry + "/" + scopeOrg + "/" + cfg.Name
+	}
+
+	// Infisical
+	cfg.Infisical.ProjectSlug = scopeInfisicalSlug
+	cfg.Infisical.EnvSlug = "prod"
+	cfg.Infisical.SecretsPath = "/" + cfg.Name + "/db"
+
+	// Resources — slightly higher than old defaults for production readiness
+	cfg.Resources.CPU = "200m"
+	cfg.Resources.Memory = "512Mi"
+
+	// Type-specific defaults
+	switch cfg.Type {
+	case "nextjs-static":
+		cfg.Database.Enabled = false
+		cfg.Redis.Enabled = false
+		cfg.Queue.Enabled = false
+		cfg.Scheduler.Enabled = false
+		cfg.Persistence.Enabled = false
+	case "nextjs-fullstack":
+		cfg.Database.Enabled = true
+		cfg.Redis.Enabled = false
+		cfg.Queue.Enabled = false
+		cfg.Scheduler.Enabled = false
+		cfg.Persistence.Enabled = false
+	case "strapi":
+		cfg.Database.Enabled = true
+		cfg.Redis.Enabled = false
+		cfg.Queue.Enabled = false
+		cfg.Scheduler.Enabled = false
+		cfg.Persistence.Enabled = true
+	case "laravel-web":
+		cfg.Database.Enabled = true
+		cfg.Redis.Enabled = true
+		cfg.Queue.Enabled = true
+		cfg.Scheduler.Enabled = true
+		cfg.Persistence.Enabled = true
+	case "laravel-api":
+		cfg.Database.Enabled = true
+		cfg.Redis.Enabled = true
+		cfg.Queue.Enabled = true
+		cfg.Scheduler.Enabled = true
+		cfg.Persistence.Enabled = false
+	}
+}
+
+// newDefaultConfig creates a ProjectConfig with sensible initial values.
+func newDefaultConfig(detected detect.DetectionResult, inferredImage string, projectName string) config.ProjectConfig {
+	return config.ProjectConfig{
+		Name:        projectName,
+		Scope:       "customer",
+		Type:        detected.Type,
+		Environment: "preview",
+		Image:       inferredImage,
+		Database: config.DatabaseConfig{
+			Enabled: true,
+			Size:    "5Gi",
+			Name:    "app",
+		},
+		Redis: config.RedisConfig{
+			Enabled: true,
+		},
+		Queue: config.QueueConfig{
+			Enabled:  true,
+			Replicas: 1,
+		},
+		Scheduler: config.SchedulerConfig{
+			Enabled: true,
+		},
+		Horizon: config.HorizonConfig{
+			Enabled: false,
+		},
+		Reverb: config.ReverbConfig{
+			Enabled: false,
+			Port:    8080,
+		},
+		Octane: config.OctaneConfig{
+			Enabled: false,
+			Server:  "frankenphp",
+		},
+		Persistence: config.PersistenceConfig{
+			Enabled: true,
+			Size:    "5Gi",
+		},
+		Resources: config.ResourcesConfig{
+			CPU:    "100m",
+			Memory: "256Mi",
+		},
+	}
 }
 
 func isLaravel(projectType string) bool {
