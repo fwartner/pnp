@@ -193,19 +193,27 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		workflowExists = true
 	}
 
+	var ciFilesGenerated []string
+
 	if !workflowExists || flagWithCI {
 		fmt.Println(titleStyle.Render("Generating CI/CD pipeline..."))
 		if err := ci.GenerateWorkflow(projCfg.Type, projCfg.Image, globalCfg.GitopsRemote, projCfg.Name, cwd); err != nil {
 			fmt.Println(errorStyle.Render("Failed to generate CI workflow: " + err.Error()))
 			return err
 		}
-		fmt.Println(successStyle.Render("GitHub Actions workflow generated at .github/workflows/deploy.yml"))
+		ciFilesGenerated = append(ciFilesGenerated, ".github/workflows/deploy.yml")
+		fmt.Println(successStyle.Render("GitHub Actions workflow generated"))
 
 		dockerfilePath := filepath.Join(cwd, "Dockerfile")
 		if _, err := os.Stat(dockerfilePath); os.IsNotExist(err) {
 			if err := ci.GenerateDockerfile(projCfg.Type, projCfg.Octane, cwd); err != nil {
 				fmt.Println(errorStyle.Render("Failed to generate Dockerfile: " + err.Error()))
 				return err
+			}
+			ciFilesGenerated = append(ciFilesGenerated, "Dockerfile")
+			// .dockerignore is also generated if missing
+			if _, err := os.Stat(filepath.Join(cwd, ".dockerignore")); err == nil {
+				ciFilesGenerated = append(ciFilesGenerated, ".dockerignore")
 			}
 			fmt.Println(successStyle.Render("Dockerfile generated"))
 		}
@@ -217,10 +225,57 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 			fmt.Println(errorStyle.Render("Failed to save .cluster.yaml: " + err.Error()))
 			return err
 		}
+		ciFilesGenerated = append(ciFilesGenerated, ".cluster.yaml")
 		fmt.Println(successStyle.Render("Saved .cluster.yaml"))
 	}
 
-	fmt.Println(successStyle.Render("\nDeploy complete!"))
+	// 12. Auto-commit and push generated CI files to the project repo
+	if len(ciFilesGenerated) > 0 && gh.HasGitRepo(cwd) && gh.HasGitRemote(cwd) {
+		fmt.Println(titleStyle.Render("Committing CI/CD files to project repo..."))
+		if err := gh.CommitAndPush(cwd, "ci: add pnp deployment pipeline", ciFilesGenerated...); err != nil {
+			fmt.Println(errorStyle.Render("Failed to commit CI files: " + err.Error()))
+			fmt.Println("  You can manually commit and push the generated files.")
+		} else {
+			fmt.Println(successStyle.Render("CI/CD files committed and pushed"))
+		}
+	}
+
+	// 13. Ensure GITOPS_TOKEN is configured on the project repo
+	if gh.GHCLIAvailable() && gh.HasGitRepo(cwd) && gh.HasGitRemote(cwd) {
+		if err := ensureGitopsToken(cwd); err != nil {
+			fmt.Printf("  Warning: could not configure GITOPS_TOKEN: %v\n", err)
+			fmt.Println("  The CI deploy job needs a GITOPS_TOKEN secret to push to the gitops repo.")
+		}
+	}
+
+	fmt.Println(successStyle.Render("\nDeploy complete! Push to main to trigger automatic builds and deployments."))
+	return nil
+}
+
+// ensureGitopsToken checks if GITOPS_TOKEN is set on the project repo.
+// If not, it uses the current gh auth token to set it up.
+func ensureGitopsToken(dir string) error {
+	repoName, err := gh.GetRepoFullName(dir)
+	if err != nil {
+		return err
+	}
+
+	if gh.HasRepoSecret(repoName, "GITOPS_TOKEN") {
+		return nil // already configured
+	}
+
+	fmt.Println(titleStyle.Render("Setting up GITOPS_TOKEN for cross-repo deployments..."))
+
+	token, err := gh.GetAuthToken()
+	if err != nil {
+		return fmt.Errorf("could not get auth token: %w", err)
+	}
+
+	if err := gh.SetRepoSecret(repoName, "GITOPS_TOKEN", token); err != nil {
+		return err
+	}
+
+	fmt.Println(successStyle.Render("GITOPS_TOKEN configured on " + repoName))
 	return nil
 }
 

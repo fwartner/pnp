@@ -93,6 +93,78 @@ func InitAndCreateRepo(opts CreateRepoOptions) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// GetAuthToken returns the current gh CLI auth token.
+func GetAuthToken() (string, error) {
+	cmd := exec.Command("gh", "auth", "token")
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("gh auth token: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// SetRepoSecret sets a GitHub Actions secret on a repository.
+func SetRepoSecret(repoFullName, secretName, secretValue string) error {
+	cmd := exec.Command("gh", "secret", "set", secretName, "--repo", repoFullName)
+	cmd.Stdin = strings.NewReader(secretValue)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("gh secret set %s: %s: %w", secretName, strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+// HasRepoSecret checks whether a secret exists on a repository.
+func HasRepoSecret(repoFullName, secretName string) bool {
+	cmd := exec.Command("gh", "secret", "list", "--repo", repoFullName)
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, secretName+"\t") || strings.HasPrefix(line, secretName+" ") {
+			return true
+		}
+	}
+	return false
+}
+
+// GetRepoFullName returns "owner/repo" for the git repo in dir.
+func GetRepoFullName(dir string) (string, error) {
+	cmd := exec.Command("gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("getting repo name: %w", err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// CommitAndPush stages given files, commits, and pushes in the project repo.
+func CommitAndPush(dir string, message string, files ...string) error {
+	args := append([]string{"add"}, files...)
+	if err := runGit(dir, args...); err != nil {
+		return fmt.Errorf("git add: %w", err)
+	}
+
+	// Check if there are staged changes
+	checkCmd := exec.Command("git", "diff", "--cached", "--quiet")
+	checkCmd.Dir = dir
+	if err := checkCmd.Run(); err == nil {
+		return nil // nothing to commit
+	}
+
+	if err := runGit(dir, "commit", "-m", message); err != nil {
+		return fmt.Errorf("git commit: %w", err)
+	}
+
+	if err := runGit(dir, "push"); err != nil {
+		return fmt.Errorf("git push: %w", err)
+	}
+
+	return nil
+}
+
 func runGit(dir string, args ...string) error {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir

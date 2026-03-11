@@ -69,24 +69,24 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: {{ .GitopsRepo }}
-          token: ${{ "{{" }} secrets.GITOPS_TOKEN || secrets.GITHUB_TOKEN {{ "}}" }}
+          token: ${{ "{{" }} secrets.GITOPS_TOKEN {{ "}}" }}
           path: gitops
 
       - name: Update image tag
         run: |
           cd gitops
           TAG="${{ "{{" }} needs.build.outputs.image-tag {{ "}}" }}"
-          VALUES_FILE="apps/{{ .AppName }}/values.yaml"
-          if [ -f "$VALUES_FILE" ]; then
-            sed -i "s|tag:.*|tag: ${TAG}|" "$VALUES_FILE"
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add "$VALUES_FILE"
-            git diff --cached --quiet || git commit -m "deploy({{ .AppName }}): update image tag to ${TAG}"
-            git push
-          else
-            echo "::warning::Values file $VALUES_FILE not found"
-          fi
+          # Search in both production and preview paths
+          for VALUES_FILE in "apps/{{ .AppName }}/values.yaml" "apps/previews/{{ .AppName }}/values.yaml"; do
+            if [ -f "$VALUES_FILE" ]; then
+              sed -i "s|tag:.*|tag: ${TAG}|" "$VALUES_FILE"
+              git add "$VALUES_FILE"
+            fi
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git diff --cached --quiet || git commit -m "deploy({{ .AppName }}): update image tag to ${TAG}"
+          git diff --cached --quiet && echo "No changes to push" || git push
 `
 
 type workflowData struct {
