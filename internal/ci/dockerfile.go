@@ -37,7 +37,8 @@ RUN apk add --no-cache \
     icu-dev \
     freetype-dev \
     libjpeg-turbo-dev \
-    libpng-dev
+    libpng-dev \
+    $PHPIZE_DEPS
 
 # PHP extensions
 RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
@@ -51,7 +52,8 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
         gd \
         bcmath \
     && pecl install redis \
-    && docker-php-ext-enable redis
+    && docker-php-ext-enable redis \
+    && apk del $PHPIZE_DEPS
 
 # PHP production settings
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini" \
