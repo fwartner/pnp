@@ -195,7 +195,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 
 	if !workflowExists || flagWithCI {
 		fmt.Println(titleStyle.Render("Generating CI/CD pipeline..."))
-		if err := ci.GenerateWorkflow(projCfg.Type, projCfg.Image, cwd); err != nil {
+		if err := ci.GenerateWorkflow(projCfg.Type, projCfg.Image, globalCfg.GitopsRemote, projCfg.Name, cwd); err != nil {
 			fmt.Println(errorStyle.Render("Failed to generate CI workflow: " + err.Error()))
 			return err
 		}

@@ -7,7 +7,7 @@ import (
 	"text/template"
 )
 
-const workflowTemplate = `name: Build & Push
+const workflowTemplate = `name: Build & Deploy
 
 on:
   push:
@@ -23,6 +23,8 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ "{{" }} steps.meta.outputs.version {{ "}}" }}
 
     steps:
       - uses: actions/checkout@v4
@@ -57,16 +59,51 @@ jobs:
             COMPOSER_AUTH={"github-oauth":{"github.com":"${{ "{{" }} secrets.GITHUB_TOKEN {{ "}}" }}"}}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout gitops repo
+        uses: actions/checkout@v4
+        with:
+          repository: {{ .GitopsRepo }}
+          token: ${{ "{{" }} secrets.GITOPS_TOKEN {{ "}}" }}
+          path: gitops
+
+      - name: Update image tag
+        run: |
+          cd gitops
+          TAG="${{ "{{" }} needs.build.outputs.image-tag {{ "}}" }}"
+          VALUES_FILE="apps/{{ .AppName }}/values.yaml"
+          if [ -f "$VALUES_FILE" ]; then
+            sed -i "s|tag:.*|tag: ${TAG}|" "$VALUES_FILE"
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add "$VALUES_FILE"
+            git diff --cached --quiet || git commit -m "deploy({{ .AppName }}): update image tag to ${TAG}"
+            git push
+          else
+            echo "::warning::Values file $VALUES_FILE not found"
+          fi
 `
 
 type workflowData struct {
-	Image string
+	Image      string
+	GitopsRepo string
+	AppName    string
 }
 
 // GenerateWorkflow creates a GitHub Actions deploy workflow in the given project directory.
-func GenerateWorkflow(projectType string, image string, projectDir string) error {
+func GenerateWorkflow(projectType string, image string, gitopsRemote string, appName string, projectDir string) error {
+	// Extract org/repo from gitops remote URL
+	gitopsRepo := extractGitHubRepo(gitopsRemote)
+
 	data := workflowData{
-		Image: image,
+		Image:      image,
+		GitopsRepo: gitopsRepo,
+		AppName:    appName,
 	}
 
 	// Validate project type.
@@ -99,4 +136,26 @@ func GenerateWorkflow(projectType string, image string, projectDir string) error
 	}
 
 	return nil
+}
+
+// extractGitHubRepo extracts "org/repo" from various GitHub URL formats.
+func extractGitHubRepo(remote string) string {
+	// Handle SSH format: git@github.com:org/repo.git
+	if len(remote) > 15 && remote[:15] == "git@github.com:" {
+		repo := remote[15:]
+		if len(repo) > 4 && repo[len(repo)-4:] == ".git" {
+			repo = repo[:len(repo)-4]
+		}
+		return repo
+	}
+	// Handle HTTPS format: https://github.com/org/repo.git
+	prefix := "https://github.com/"
+	if len(remote) > len(prefix) && remote[:len(prefix)] == prefix {
+		repo := remote[len(prefix):]
+		if len(repo) > 4 && repo[len(repo)-4:] == ".git" {
+			repo = repo[:len(repo)-4]
+		}
+		return repo
+	}
+	return remote
 }

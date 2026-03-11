@@ -12,8 +12,10 @@ import (
 func TestGenerateLaravelWorkflow(t *testing.T) {
 	dir := t.TempDir()
 	image := "ghcr.io/example/laravel-app"
+	gitopsRemote := "https://github.com/org/gitops.git"
+	appName := "laravel-app"
 
-	err := GenerateWorkflow("laravel-web", image, dir)
+	err := GenerateWorkflow("laravel-web", image, gitopsRemote, appName, dir)
 	if err != nil {
 		t.Fatalf("GenerateWorkflow returned error: %v", err)
 	}
@@ -27,7 +29,7 @@ func TestGenerateLaravelWorkflow(t *testing.T) {
 	content := string(data)
 
 	for _, want := range []string{
-		"Build & Push",
+		"Build & Deploy",
 		"docker/build-push-action",
 		"docker/login-action",
 		"docker/metadata-action",
@@ -35,6 +37,10 @@ func TestGenerateLaravelWorkflow(t *testing.T) {
 		"ghcr.io",
 		image,
 		"cache-from: type=gha",
+		"org/gitops",
+		"GITOPS_TOKEN",
+		"apps/laravel-app/values.yaml",
+		"deploy(laravel-app)",
 	} {
 		if !strings.Contains(content, want) {
 			t.Errorf("workflow should contain %q", want)
@@ -46,7 +52,7 @@ func TestGenerateStrapiWorkflow(t *testing.T) {
 	dir := t.TempDir()
 	image := "ghcr.io/example/strapi-app"
 
-	err := GenerateWorkflow("strapi", image, dir)
+	err := GenerateWorkflow("strapi", image, "https://github.com/org/gitops.git", "strapi-app", dir)
 	if err != nil {
 		t.Fatalf("GenerateWorkflow returned error: %v", err)
 	}
@@ -64,7 +70,7 @@ func TestGenerateStrapiWorkflow(t *testing.T) {
 
 func TestGenerateWorkflow_UnknownType(t *testing.T) {
 	dir := t.TempDir()
-	err := GenerateWorkflow("unknown", "ghcr.io/example/app", dir)
+	err := GenerateWorkflow("unknown", "ghcr.io/example/app", "https://github.com/org/gitops.git", "app", dir)
 	if err == nil {
 		t.Fatal("expected error for unknown project type")
 	}
@@ -81,7 +87,7 @@ func TestGenerateWorkflow_CreatesDirectory(t *testing.T) {
 		t.Fatal("expected .github/workflows to not exist before GenerateWorkflow")
 	}
 
-	err := GenerateWorkflow("laravel-api", "ghcr.io/example/api", dir)
+	err := GenerateWorkflow("laravel-api", "ghcr.io/example/api", "https://github.com/org/gitops.git", "api-app", dir)
 	if err != nil {
 		t.Fatalf("GenerateWorkflow returned error: %v", err)
 	}
@@ -92,6 +98,26 @@ func TestGenerateWorkflow_CreatesDirectory(t *testing.T) {
 	}
 	if !info.IsDir() {
 		t.Error("expected .github/workflows to be a directory")
+	}
+}
+
+func TestExtractGitHubRepo(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"https://github.com/org/gitops.git", "org/gitops"},
+		{"https://github.com/fwartner/pixelandprocess-gitops.git", "fwartner/pixelandprocess-gitops"},
+		{"git@github.com:org/gitops.git", "org/gitops"},
+		{"git@github.com:fwartner/pixelandprocess-gitops.git", "fwartner/pixelandprocess-gitops"},
+		{"https://github.com/org/gitops", "org/gitops"},
+		{"something-else", "something-else"},
+	}
+	for _, tt := range tests {
+		got := extractGitHubRepo(tt.input)
+		if got != tt.want {
+			t.Errorf("extractGitHubRepo(%q) = %q, want %q", tt.input, got, tt.want)
+		}
 	}
 }
 
