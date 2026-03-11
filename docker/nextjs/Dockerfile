@@ -1,7 +1,9 @@
-FROM node:20-alpine
+FROM node:22-alpine
 
-# System deps for native modules (sharp, etc.)
-RUN apk add --no-cache \
+# Upgrade all packages to latest + install system deps
+RUN apk upgrade --no-cache && apk add --no-cache \
+    dumb-init \
+    curl \
     libc6-compat \
     vips-dev \
     python3 \
@@ -20,4 +22,9 @@ ENV HOSTNAME="0.0.0.0"
 
 WORKDIR /app
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -f http://localhost:3000/ || exit 1
+
 EXPOSE 3000
+
+ENTRYPOINT ["dumb-init", "--"]
