@@ -52,12 +52,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Infisical Vault URL").
-				Description("URL of your Infisical instance").
+				Description("Used in InfisicalSecret CRDs — the operator handles syncing").
 				Value(&cfg.Infisical.Host),
-			huh.NewInput().
-				Title("Infisical Machine Identity Token").
-				Description("Token for authenticating with Infisical").
-				Value(&cfg.Infisical.Token),
 		),
 	).Run()
 	if err != nil {

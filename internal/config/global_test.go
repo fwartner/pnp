@@ -30,7 +30,6 @@ func TestLoadGlobalConfig_FromFile(t *testing.T) {
 gitopsRemote: https://github.com/test/gitops.git
 infisical:
   host: https://vault.test.de
-  token: test-token
 defaults:
   domain: test.de
   imageRegistry: ghcr.io
@@ -45,8 +44,8 @@ defaults:
 	if cfg.GitopsRepo != "/tmp/test-gitops" {
 		t.Errorf("expected /tmp/test-gitops, got %s", cfg.GitopsRepo)
 	}
-	if cfg.Infisical.Token != "test-token" {
-		t.Errorf("expected test-token, got %s", cfg.Infisical.Token)
+	if cfg.Infisical.Host != "https://vault.test.de" {
+		t.Errorf("expected https://vault.test.de, got %s", cfg.Infisical.Host)
 	}
 	if cfg.Defaults.GithubOrg != "testorg" {
 		t.Errorf("expected testorg, got %s", cfg.Defaults.GithubOrg)
@@ -62,7 +61,6 @@ func TestSaveAndLoadGlobalConfig(t *testing.T) {
 		GitopsRemote: "https://github.com/org/gitops.git",
 		Infisical: InfisicalConfig{
 			Host:            "https://vault.example.com",
-			Token:           "secret-token-123",
 			MailProjectSlug: "mail-slug-abc",
 		},
 		Defaults: DefaultsConfig{
@@ -89,9 +87,6 @@ func TestSaveAndLoadGlobalConfig(t *testing.T) {
 	}
 	if loaded.Infisical.Host != original.Infisical.Host {
 		t.Errorf("Infisical.Host: expected %s, got %s", original.Infisical.Host, loaded.Infisical.Host)
-	}
-	if loaded.Infisical.Token != original.Infisical.Token {
-		t.Errorf("Infisical.Token: expected %s, got %s", original.Infisical.Token, loaded.Infisical.Token)
 	}
 	if loaded.Infisical.MailProjectSlug != original.Infisical.MailProjectSlug {
 		t.Errorf("Infisical.MailProjectSlug: expected %s, got %s", original.Infisical.MailProjectSlug, loaded.Infisical.MailProjectSlug)

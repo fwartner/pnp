@@ -12,7 +12,6 @@ import (
 	"github.com/fwartner/pnp/internal/detect"
 	"github.com/fwartner/pnp/internal/gh"
 	"github.com/fwartner/pnp/internal/gitops"
-	"github.com/fwartner/pnp/internal/infisical"
 	"github.com/fwartner/pnp/internal/templates"
 	"github.com/fwartner/pnp/internal/wizard"
 	"github.com/spf13/cobra"
@@ -32,14 +31,12 @@ var deployCmd = &cobra.Command{
 }
 
 var (
-	flagPR          bool
-	flagSkipSecrets bool
-	flagWithCI      bool
+	flagPR     bool
+	flagWithCI bool
 )
 
 func init() {
 	deployCmd.Flags().BoolVar(&flagPR, "pr", false, "Create a pull request instead of pushing directly")
-	deployCmd.Flags().BoolVar(&flagSkipSecrets, "skip-secrets", false, "Skip creating secrets in Infisical")
 	deployCmd.Flags().BoolVar(&flagWithCI, "with-ci", false, "Generate GitHub Actions deploy workflow")
 	rootCmd.AddCommand(deployCmd)
 }
@@ -125,37 +122,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Println(successStyle.Render("Manifests written to gitops repo"))
 
-	// 8. Create secrets via Infisical if applicable
-	if !flagSkipSecrets && projCfg.Database.Enabled && globalCfg.Infisical.Token != "" {
-		fmt.Println(titleStyle.Render("Creating secrets in Infisical..."))
-		client := infisical.NewClient(globalCfg.Infisical.Host, globalCfg.Infisical.Token)
-
-		pw, err := infisical.GeneratePassword()
-		if err != nil {
-			fmt.Println(errorStyle.Render("Failed to generate password: " + err.Error()))
-			return err
-		}
-
-		secrets := map[string]string{
-			"password": pw,
-			"username": projCfg.Name,
-		}
-
-		err = client.CreateSecrets(
-			secrets,
-			projCfg.Infisical.ProjectSlug,
-			projCfg.Infisical.EnvSlug,
-			projCfg.Infisical.SecretsPath,
-		)
-		if err != nil {
-			fmt.Println(errorStyle.Render("Warning: failed to create secrets: " + err.Error()))
-			// Non-fatal: continue with deploy
-		} else {
-			fmt.Println(successStyle.Render("Secrets created in Infisical"))
-		}
-	}
-
-	// 9. Commit and push (or create PR)
+	// 8. Commit and push (or create PR)
 	commitMsg := fmt.Sprintf("deploy(%s): %s to %s", projCfg.Environment, projCfg.Name, namespace)
 
 	if flagPR {

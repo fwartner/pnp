@@ -18,7 +18,6 @@ type GlobalConfig struct {
 
 type InfisicalConfig struct {
 	Host             string `yaml:"host"`
-	Token            string `yaml:"token"`
 	MailProjectSlug  string `yaml:"mailProjectSlug"`
 }
 
