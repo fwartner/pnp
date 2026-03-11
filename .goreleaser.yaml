@@ -1,0 +1,37 @@
+version: 2
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/fwartner/pnp/cmd.version={{.Version}}
+      - -X github.com/fwartner/pnp/cmd.commit={{.ShortCommit}}
+    binary: pnp
+
+brews:
+  - repository:
+      owner: fwartner
+      name: homebrew-tap
+    name: pnp
+    homepage: https://github.com/fwartner/pnp
+    description: "Pixel & Process Kubernetes deployment manager"
+    install: |
+      bin.install "pnp"
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
