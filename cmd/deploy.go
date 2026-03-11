@@ -3,11 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/fwartner/pnp/internal/ci"
 	"github.com/fwartner/pnp/internal/config"
 	"github.com/fwartner/pnp/internal/detect"
+	"github.com/fwartner/pnp/internal/gh"
 	"github.com/fwartner/pnp/internal/gitops"
 	"github.com/fwartner/pnp/internal/infisical"
 	"github.com/fwartner/pnp/internal/templates"
@@ -56,7 +59,12 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// 2. Check for existing .cluster.yaml
+	// 2. Ensure git repo and GitHub remote exist
+	if err := ensureGitRepo(cwd, globalCfg); err != nil {
+		return err
+	}
+
+	// 3. Check for existing .cluster.yaml
 	var projCfg config.ProjectConfig
 	existingConfig := false
 
@@ -65,7 +73,7 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		existingConfig = true
 		fmt.Println(successStyle.Render("Found existing .cluster.yaml"))
 	} else {
-		// 3. No .cluster.yaml: detect, infer, run wizard
+		// 4. No .cluster.yaml: detect, infer, run wizard
 		fmt.Println(titleStyle.Render("Detecting project type..."))
 		detected := detect.DetectProjectType(cwd)
 		fmt.Printf("  Detected: %s (%s confidence)\n", detected.Type, detected.Confidence)
@@ -197,5 +205,86 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println(successStyle.Render("\nDeploy complete!"))
+	return nil
+}
+
+// ensureGitRepo checks if the current directory has a git repo with a GitHub remote.
+// If not, it offers to create one using the gh CLI.
+func ensureGitRepo(dir string, globalCfg config.GlobalConfig) error {
+	if gh.HasGitRepo(dir) && gh.HasGitRemote(dir) {
+		return nil // all good
+	}
+
+	if !gh.GHCLIAvailable() {
+		if !gh.HasGitRepo(dir) {
+			return fmt.Errorf("no git repository found and gh CLI is not available — initialize a git repo manually or install/authenticate the gh CLI")
+		}
+		fmt.Println(errorStyle.Render("Warning: no git remote found and gh CLI not available. Image inference may not work."))
+		return nil
+	}
+
+	status := "No git repository found."
+	if gh.HasGitRepo(dir) {
+		status = "Git repository found but no GitHub remote."
+	}
+
+	var createRepo bool
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title(status + " Create a GitHub repository?").
+				Description("Uses the gh CLI to create a repo and set up the remote.").
+				Value(&createRepo),
+		),
+	).Run()
+	if err != nil {
+		return err
+	}
+
+	if !createRepo {
+		return nil
+	}
+
+	projectName := filepath.Base(dir)
+	org := globalCfg.Defaults.GithubOrg
+
+	var repoName string
+	if org != "" {
+		repoName = org + "/" + projectName
+	} else {
+		repoName = projectName
+	}
+
+	var repoVisibility string
+	err = huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Title("Repository name").
+				Value(&repoName),
+			huh.NewSelect[string]().
+				Title("Visibility").
+				Options(
+					huh.NewOption("Private", "private"),
+					huh.NewOption("Public", "public"),
+				).
+				Value(&repoVisibility),
+		),
+	).Run()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(titleStyle.Render("Creating GitHub repository..."))
+	remoteURL, err := gh.InitAndCreateRepo(gh.CreateRepoOptions{
+		Name:        repoName,
+		Description: projectName + " — managed by pnp",
+		Private:     repoVisibility == "private",
+		Dir:         dir,
+	})
+	if err != nil {
+		return fmt.Errorf("creating GitHub repo: %w", err)
+	}
+
+	fmt.Println(successStyle.Render("Repository created: " + remoteURL))
 	return nil
 }
