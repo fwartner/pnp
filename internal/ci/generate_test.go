@@ -70,17 +70,6 @@ func TestGenerateStrapiWorkflow(t *testing.T) {
 	}
 }
 
-func TestGenerateWorkflow_UnknownType(t *testing.T) {
-	dir := t.TempDir()
-	err := GenerateWorkflow("unknown", "ghcr.io/example/app", "https://github.com/org/gitops.git", "app", dir)
-	if err == nil {
-		t.Fatal("expected error for unknown project type")
-	}
-	if !strings.Contains(err.Error(), "unsupported project type") {
-		t.Errorf("expected 'unsupported project type' in error, got: %v", err)
-	}
-}
-
 func TestGenerateWorkflow_CreatesDirectory(t *testing.T) {
 	dir := t.TempDir()
 

@@ -7,9 +7,9 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/fwartner/pnp/internal/config"
 	"github.com/fwartner/pnp/internal/detect"
+	"github.com/fwartner/pnp/internal/types"
 )
 
-var projectTypes = []string{"laravel-web", "laravel-api", "nextjs-fullstack", "nextjs-static", "strapi"}
 var environments = []string{"preview", "staging", "production"}
 var scopes = []string{"customer", "private", "agency"}
 var octaneServers = []string{"frankenphp", "swoole", "roadrunner"}
@@ -23,6 +23,8 @@ func Run(detected detect.DetectionResult, inferredImage string, projectName stri
 func RunBasic(detected detect.DetectionResult, inferredImage string, projectName string, globalCfg config.GlobalConfig) (config.ProjectConfig, error) {
 	cfg := newDefaultConfig(detected, inferredImage, projectName)
 
+	projectTypeNames := types.Names()
+
 	// Only 4 questions: name, type, scope, environment
 	err := huh.NewForm(
 		huh.NewGroup(
@@ -32,7 +34,7 @@ func RunBasic(detected detect.DetectionResult, inferredImage string, projectName
 			huh.NewSelect[string]().
 				Title("Project type").
 				Description(fmt.Sprintf("Detected: %s (%s confidence)", detected.Type, detected.Confidence)).
-				Options(huh.NewOptions(projectTypes...)...).
+				Options(huh.NewOptions(projectTypeNames...)...).
 				Value(&cfg.Type),
 			huh.NewSelect[string]().
 				Title("Project scope").
@@ -53,6 +55,11 @@ func RunBasic(detected detect.DetectionResult, inferredImage string, projectName
 		return cfg, err
 	}
 
+	// Auto-construct scope-prefixed name
+	if !config.HasScopePrefix(cfg.Name, cfg.Scope) {
+		cfg.Name = config.ScopePrefixedName(cfg.Scope, cfg.Name)
+	}
+
 	// Apply all smart defaults based on the 4 answers
 	ApplyDefaults(&cfg, globalCfg)
 
@@ -62,6 +69,8 @@ func RunBasic(detected detect.DetectionResult, inferredImage string, projectName
 // RunAdvanced executes the full 7-step interactive wizard with all options.
 func RunAdvanced(detected detect.DetectionResult, inferredImage string, projectName string, globalCfg config.GlobalConfig) (config.ProjectConfig, error) {
 	cfg := newDefaultConfig(detected, inferredImage, projectName)
+
+	projectTypeNames := types.Names()
 
 	// Step 1: Scope and basic info
 	err := huh.NewForm(
@@ -81,7 +90,7 @@ func RunAdvanced(detected detect.DetectionResult, inferredImage string, projectN
 			huh.NewSelect[string]().
 				Title("Project type").
 				Description(fmt.Sprintf("Detected: %s (%s confidence)", detected.Type, detected.Confidence)).
-				Options(huh.NewOptions(projectTypes...)...).
+				Options(huh.NewOptions(projectTypeNames...)...).
 				Value(&cfg.Type),
 			huh.NewSelect[string]().
 				Title("Environment").
@@ -91,6 +100,11 @@ func RunAdvanced(detected detect.DetectionResult, inferredImage string, projectN
 	).Run()
 	if err != nil {
 		return cfg, err
+	}
+
+	// Auto-construct scope-prefixed name
+	if !config.HasScopePrefix(cfg.Name, cfg.Scope) {
+		cfg.Name = config.ScopePrefixedName(cfg.Scope, cfg.Name)
 	}
 
 	// Apply scope-based defaults.
@@ -123,8 +137,10 @@ func RunAdvanced(detected detect.DetectionResult, inferredImage string, projectN
 		return cfg, err
 	}
 
-	// Step 3: Database & Redis (skip for nextjs-static)
-	if cfg.Type != "nextjs-static" {
+	pt := types.Get(cfg.Type)
+
+	// Step 3: Database & Redis (skip for types without DB)
+	if pt != nil && pt.HasDatabase() {
 		err = huh.NewForm(
 			huh.NewGroup(
 				huh.NewConfirm().
@@ -142,7 +158,7 @@ func RunAdvanced(detected detect.DetectionResult, inferredImage string, projectN
 			return cfg, err
 		}
 
-		if isLaravel(cfg.Type) {
+		if pt.IsLaravel() {
 			err = huh.NewForm(
 				huh.NewGroup(
 					huh.NewConfirm().
@@ -163,7 +179,7 @@ func RunAdvanced(detected detect.DetectionResult, inferredImage string, projectN
 	}
 
 	// Step 4: Queue, Scheduler, Persistence (Laravel only)
-	if isLaravel(cfg.Type) {
+	if pt != nil && pt.IsLaravel() {
 		err = huh.NewForm(
 			huh.NewGroup(
 				huh.NewConfirm().
@@ -196,7 +212,7 @@ func RunAdvanced(detected detect.DetectionResult, inferredImage string, projectN
 	}
 
 	// Step 5: Laravel features — Horizon, Reverb, Octane
-	if isLaravel(cfg.Type) {
+	if pt != nil && pt.IsLaravel() {
 		cwd := "."
 		features := detect.DetectLaravelFeatures(cwd)
 		if features.Horizon {
@@ -319,42 +335,21 @@ func ApplyDefaults(cfg *config.ProjectConfig, globalCfg config.GlobalConfig) {
 	cfg.Infisical.EnvSlug = "prod"
 	cfg.Infisical.SecretsPath = "/" + cfg.Name + "/db"
 
-	// Resources — slightly higher than old defaults for production readiness
-	cfg.Resources.CPU = "200m"
-	cfg.Resources.Memory = "512Mi"
-
-	// Type-specific defaults
-	switch cfg.Type {
-	case "nextjs-static":
-		cfg.Database.Enabled = false
-		cfg.Redis.Enabled = false
-		cfg.Queue.Enabled = false
-		cfg.Scheduler.Enabled = false
-		cfg.Persistence.Enabled = false
-	case "nextjs-fullstack":
-		cfg.Database.Enabled = true
-		cfg.Redis.Enabled = false
-		cfg.Queue.Enabled = false
-		cfg.Scheduler.Enabled = false
-		cfg.Persistence.Enabled = false
-	case "strapi":
-		cfg.Database.Enabled = true
-		cfg.Redis.Enabled = false
-		cfg.Queue.Enabled = false
-		cfg.Scheduler.Enabled = false
-		cfg.Persistence.Enabled = true
-	case "laravel-web":
-		cfg.Database.Enabled = true
-		cfg.Redis.Enabled = true
-		cfg.Queue.Enabled = true
-		cfg.Scheduler.Enabled = true
-		cfg.Persistence.Enabled = true
-	case "laravel-api":
-		cfg.Database.Enabled = true
-		cfg.Redis.Enabled = true
-		cfg.Queue.Enabled = true
-		cfg.Scheduler.Enabled = true
-		cfg.Persistence.Enabled = false
+	// Apply type-specific defaults from the registry
+	pt := types.Get(cfg.Type)
+	if pt != nil {
+		defaults := pt.DefaultConfig()
+		cfg.Database.Enabled = defaults.Database
+		cfg.Redis.Enabled = defaults.Redis
+		cfg.Queue.Enabled = defaults.Queue
+		cfg.Scheduler.Enabled = defaults.Scheduler
+		cfg.Persistence.Enabled = defaults.Persistence
+		cfg.Resources.CPU = defaults.CPU
+		cfg.Resources.Memory = defaults.Memory
+	} else {
+		// Fallback for unknown types
+		cfg.Resources.CPU = "200m"
+		cfg.Resources.Memory = "512Mi"
 	}
 }
 
@@ -401,10 +396,6 @@ func newDefaultConfig(detected detect.DetectionResult, inferredImage string, pro
 			Memory: "256Mi",
 		},
 	}
-}
-
-func isLaravel(projectType string) bool {
-	return projectType == "laravel-web" || projectType == "laravel-api"
 }
 
 func defaultDomain(name, environment, baseDomain string) string {

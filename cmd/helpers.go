@@ -5,6 +5,7 @@ import (
 
 	"github.com/fwartner/pnp/internal/config"
 	"github.com/fwartner/pnp/internal/templates"
+	"github.com/fwartner/pnp/internal/types"
 	"github.com/fwartner/pnp/internal/wizard"
 )
 
@@ -12,7 +13,9 @@ import (
 // configuration. This is shared between deploy and update commands.
 func buildTemplateData(projCfg config.ProjectConfig, globalCfg config.GlobalConfig) templates.TemplateData {
 	namespace := namespaceFromConfig(projCfg)
-	isLaravel := projCfg.Type == "laravel-web" || projCfg.Type == "laravel-api"
+
+	pt := types.Get(projCfg.Type)
+	isLaravel := pt != nil && pt.IsLaravel()
 
 	queueReplicas := projCfg.Queue.Replicas
 	if queueReplicas < 1 {
@@ -35,6 +38,11 @@ func buildTemplateData(projCfg config.ProjectConfig, globalCfg config.GlobalConf
 	}
 
 	scopeDomain := globalCfg.EffectiveDomain(projCfg.Scope)
+
+	chartPath := "charts/" + projCfg.Type
+	if pt != nil {
+		chartPath = pt.ChartPath()
+	}
 
 	return templates.TemplateData{
 		Name:      projCfg.Name,
@@ -73,7 +81,7 @@ func buildTemplateData(projCfg config.ProjectConfig, globalCfg config.GlobalConf
 		CPU:    projCfg.Resources.CPU,
 		Memory: projCfg.Resources.Memory,
 
-		ChartPath: chartPathForType(projCfg.Type),
+		ChartPath: chartPath,
 		RepoURL:   globalCfg.GitopsRemote,
 	}
 }
@@ -86,19 +94,4 @@ func namespaceFromConfig(projCfg config.ProjectConfig) string {
 		namespace = "preview-" + projCfg.Name
 	}
 	return namespace
-}
-
-// chartPathForType returns the shared Helm chart path in the gitops repo
-// based on the project type (e.g., "charts/laravel", "charts/nextjs").
-func chartPathForType(projectType string) string {
-	switch projectType {
-	case "laravel-web", "laravel-api":
-		return "charts/laravel"
-	case "nextjs-fullstack", "nextjs-static":
-		return "charts/nextjs"
-	case "strapi":
-		return "charts/strapi"
-	default:
-		return "charts/" + projectType
-	}
 }

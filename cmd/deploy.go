@@ -12,6 +12,7 @@ import (
 	"github.com/fwartner/pnp/internal/doctor"
 	"github.com/fwartner/pnp/internal/gh"
 	"github.com/fwartner/pnp/internal/gitops"
+	"github.com/fwartner/pnp/internal/plugin"
 	"github.com/fwartner/pnp/internal/progress"
 	"github.com/fwartner/pnp/internal/secrets"
 	"github.com/fwartner/pnp/internal/templates"
@@ -271,6 +272,18 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 		},
 	)
 
+	// Run pre-deploy hooks (if any plugins registered them)
+	if plugin.HasHooks("pre-deploy") {
+		hookData := plugin.HookData{
+			Project: projCfg,
+			Global:  globalCfg,
+		}
+		if err := plugin.RunHooks("pre-deploy", hookData); err != nil {
+			fmt.Println(errorStyle.Render("Pre-deploy hook failed: " + err.Error()))
+			return err
+		}
+	}
+
 	fmt.Println()
 	if err := tracker.Run(); err != nil {
 		fmt.Println()
@@ -281,6 +294,18 @@ func runDeploy(cmd *cobra.Command, args []string) error {
 	// Clean up temp dir
 	if tmpDir != "" {
 		os.RemoveAll(tmpDir)
+	}
+
+	// Run post-deploy hooks
+	if plugin.HasHooks("post-deploy") {
+		hookData := plugin.HookData{
+			Project: projCfg,
+			Global:  globalCfg,
+		}
+		if err := plugin.RunHooks("post-deploy", hookData); err != nil {
+			fmt.Println(warnStyle.Render("Post-deploy hook failed: " + err.Error()))
+			// non-fatal — deploy already succeeded
+		}
 	}
 
 	fmt.Println()

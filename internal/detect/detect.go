@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/fwartner/pnp/internal/types"
 )
 
 // DetectionResult holds the detected project type and confidence level.
@@ -24,85 +26,99 @@ type LaravelFeatures struct {
 
 // DetectLaravelFeatures checks composer.json for Horizon, Reverb, and Octane packages.
 func DetectLaravelFeatures(dir string) LaravelFeatures {
-	composerPath := filepath.Join(dir, "composer.json")
-	data, err := os.ReadFile(composerPath)
-	if err != nil {
-		return LaravelFeatures{}
-	}
-
-	var pkg struct {
-		Require    map[string]string `json:"require"`
-		RequireDev map[string]string `json:"require-dev"`
-	}
-	if err := json.Unmarshal(data, &pkg); err != nil {
-		return LaravelFeatures{}
-	}
-
-	has := func(name string) bool {
-		_, ok := pkg.Require[name]
-		if !ok {
-			_, ok = pkg.RequireDev[name]
-		}
-		return ok
-	}
-
+	f := types.DetectLaravelFeatures(dir)
 	return LaravelFeatures{
-		Horizon: has("laravel/horizon"),
-		Reverb:  has("laravel/reverb"),
-		Octane:  has("laravel/octane"),
+		Horizon: f.Horizon,
+		Reverb:  f.Reverb,
+		Octane:  f.Octane,
 	}
 }
 
 // DetectProjectType inspects the directory and returns the detected project type.
+// Delegates to the type registry for detection.
 func DetectProjectType(dir string) DetectionResult {
-	// Check Laravel first (composer.json + artisan)
-	if fileExists(filepath.Join(dir, "composer.json")) && fileExists(filepath.Join(dir, "artisan")) {
-		if isLaravelWeb(dir) {
-			return DetectionResult{Type: "laravel-web", Confidence: "high"}
-		}
-		return DetectionResult{Type: "laravel-api", Confidence: "high"}
+	pt, confidence := types.Detect(dir)
+	if pt == nil || confidence == "" {
+		return DetectionResult{Type: "unknown", Confidence: "low"}
 	}
-
-	// Check Node.js projects (package.json)
-	pkgPath := filepath.Join(dir, "package.json")
-	if fileExists(pkgPath) {
-		deps := readPackageDeps(pkgPath)
-
-		// Strapi
-		if _, ok := deps["@strapi/strapi"]; ok {
-			return DetectionResult{Type: "strapi", Confidence: "high"}
-		}
-
-		// Next.js
-		if _, ok := deps["next"]; ok {
-			if hasDBDeps(deps) {
-				return DetectionResult{Type: "nextjs-fullstack", Confidence: "high"}
-			}
-			return DetectionResult{Type: "nextjs-static", Confidence: "high"}
-		}
-	}
-
-	return DetectionResult{Type: "unknown", Confidence: "low"}
+	return DetectionResult{Type: pt.Name(), Confidence: confidence}
 }
 
-// isLaravelWeb returns true if the Laravel project has Jobs dir or scheduler references.
-func isLaravelWeb(dir string) bool {
-	// Check for Jobs directory
-	jobsDir := filepath.Join(dir, "app", "Jobs")
-	if info, err := os.Stat(jobsDir); err == nil && info.IsDir() {
-		return true
+// InferProjectName returns the base name of the directory as the project name.
+func InferProjectName(dir string) string {
+	return filepath.Base(dir)
+}
+
+// InferImageFromGitRemote reads the git remote origin URL and constructs a container
+// image reference in the form registry/org/repo.
+func InferImageFromGitRemote(dir, registry string) string {
+	remoteURL := getGitRemoteURL(dir)
+	if remoteURL == "" {
+		return ""
 	}
 
-	// Check routes/console.php for Schedule references (Laravel 11+ style)
-	consolePath := filepath.Join(dir, "routes", "console.php")
-	if data, err := os.ReadFile(consolePath); err == nil {
-		content := string(data)
-		if strings.Contains(content, "Schedule") || strings.Contains(content, "schedule") {
-			return true
+	orgRepo := parseGitRemoteURL(remoteURL)
+	if orgRepo == "" {
+		return ""
+	}
+
+	return registry + "/" + orgRepo
+}
+
+// getGitRemoteURL tries `git remote get-url origin`, falling back to parsing .git/config.
+func getGitRemoteURL(dir string) string {
+	cmd := exec.Command("git", "remote", "get-url", "origin")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err == nil {
+		return strings.TrimSpace(string(out))
+	}
+
+	configPath := filepath.Join(dir, ".git", "config")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return ""
+	}
+
+	lines := strings.Split(string(data), "\n")
+	inOrigin := false
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == `[remote "origin"]` {
+			inOrigin = true
+			continue
+		}
+		if inOrigin {
+			if strings.HasPrefix(trimmed, "[") {
+				break
+			}
+			if strings.HasPrefix(trimmed, "url = ") {
+				return strings.TrimPrefix(trimmed, "url = ")
+			}
 		}
 	}
+	return ""
+}
 
-	return false
+// parseGitRemoteURL extracts org/repo from SSH or HTTPS git URLs.
+var (
+	sshPattern   = regexp.MustCompile(`git@[^:]+:([^/]+)/([^/]+?)(?:\.git)?$`)
+	httpsPattern = regexp.MustCompile(`https?://[^/]+/([^/]+)/([^/]+?)(?:\.git)?$`)
+)
+
+func parseGitRemoteURL(url string) string {
+	if m := sshPattern.FindStringSubmatch(url); m != nil {
+		return m[1] + "/" + m[2]
+	}
+	if m := httpsPattern.FindStringSubmatch(url); m != nil {
+		return m[1] + "/" + m[2]
+	}
+	return ""
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // readPackageDeps reads package.json and returns a merged map of dependencies and devDependencies.
@@ -133,14 +149,8 @@ func readPackageDeps(path string) map[string]string {
 // hasDBDeps checks if the dependency map contains any known database packages.
 func hasDBDeps(deps map[string]string) bool {
 	dbPackages := []string{
-		"prisma",
-		"@prisma/client",
-		"pg",
-		"postgres",
-		"typeorm",
-		"drizzle-orm",
-		"knex",
-		"sequelize",
+		"prisma", "@prisma/client", "pg", "postgres",
+		"typeorm", "drizzle-orm", "knex", "sequelize",
 	}
 	for _, pkg := range dbPackages {
 		if _, ok := deps[pkg]; ok {
@@ -148,84 +158,4 @@ func hasDBDeps(deps map[string]string) bool {
 		}
 	}
 	return false
-}
-
-// InferProjectName returns the base name of the directory as the project name.
-func InferProjectName(dir string) string {
-	return filepath.Base(dir)
-}
-
-// InferImageFromGitRemote reads the git remote origin URL and constructs a container
-// image reference in the form registry/org/repo.
-func InferImageFromGitRemote(dir, registry string) string {
-	remoteURL := getGitRemoteURL(dir)
-	if remoteURL == "" {
-		return ""
-	}
-
-	orgRepo := parseGitRemoteURL(remoteURL)
-	if orgRepo == "" {
-		return ""
-	}
-
-	return registry + "/" + orgRepo
-}
-
-// getGitRemoteURL tries `git remote get-url origin`, falling back to parsing .git/config.
-func getGitRemoteURL(dir string) string {
-	// Try git command first
-	cmd := exec.Command("git", "remote", "get-url", "origin")
-	cmd.Dir = dir
-	out, err := cmd.Output()
-	if err == nil {
-		return strings.TrimSpace(string(out))
-	}
-
-	// Fallback: read .git/config
-	configPath := filepath.Join(dir, ".git", "config")
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return ""
-	}
-
-	// Simple parsing: find url = ... under [remote "origin"]
-	lines := strings.Split(string(data), "\n")
-	inOrigin := false
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == `[remote "origin"]` {
-			inOrigin = true
-			continue
-		}
-		if inOrigin {
-			if strings.HasPrefix(trimmed, "[") {
-				break // new section
-			}
-			if strings.HasPrefix(trimmed, "url = ") {
-				return strings.TrimPrefix(trimmed, "url = ")
-			}
-		}
-	}
-	return ""
-}
-
-// parseGitRemoteURL extracts org/repo from SSH or HTTPS git URLs.
-var (
-	sshPattern   = regexp.MustCompile(`git@[^:]+:([^/]+)/([^/]+?)(?:\.git)?$`)
-	httpsPattern = regexp.MustCompile(`https?://[^/]+/([^/]+)/([^/]+?)(?:\.git)?$`)
-)
-
-func parseGitRemoteURL(url string) string {
-	if m := sshPattern.FindStringSubmatch(url); m != nil {
-		return m[1] + "/" + m[2]
-	}
-	if m := httpsPattern.FindStringSubmatch(url); m != nil {
-		return m[1] + "/" + m[2]
-	}
-	return ""
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }

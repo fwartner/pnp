@@ -106,14 +106,6 @@ func GenerateWorkflow(projectType string, image string, gitopsRemote string, app
 		AppName:    appName,
 	}
 
-	// Validate project type.
-	switch projectType {
-	case "laravel-web", "laravel-api", "nextjs-fullstack", "nextjs-static", "strapi":
-		// ok
-	default:
-		return fmt.Errorf("unsupported project type: %s", projectType)
-	}
-
 	tmpl, err := template.New("workflow").Parse(workflowTemplate)
 	if err != nil {
 		return fmt.Errorf("failed to parse workflow template: %w", err)
