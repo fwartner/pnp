@@ -4,7 +4,7 @@ A CLI tool that automates Kubernetes deployments for [Pixel & Process](https://p
 
 ## What it does
 
-1. **Detects** your project type (Laravel, Next.js, Strapi) from source files
+1. **Detects** your project type (Laravel, Next.js, Strapi — or any plugin-provided type) from source files
 2. **Creates** a GitHub repository if one doesn't exist (via `gh` CLI)
 3. **Walks you through** an interactive wizard to configure the deployment
 4. **Generates** Kubernetes manifests (ArgoCD Application, CNPG PostgreSQL, Infisical secrets)
@@ -26,15 +26,15 @@ Download the latest release from [GitHub Releases](https://github.com/fwartner/p
 
 ```bash
 # macOS (Apple Silicon)
-curl -sL https://github.com/fwartner/pnp/releases/latest/download/pnp_0.1.0_darwin_arm64.tar.gz | tar xz
+curl -sL https://github.com/fwartner/pnp/releases/latest/download/pnp_darwin_arm64.tar.gz | tar xz
 sudo mv pnp /usr/local/bin/
 
 # macOS (Intel)
-curl -sL https://github.com/fwartner/pnp/releases/latest/download/pnp_0.1.0_darwin_amd64.tar.gz | tar xz
+curl -sL https://github.com/fwartner/pnp/releases/latest/download/pnp_darwin_amd64.tar.gz | tar xz
 sudo mv pnp /usr/local/bin/
 
 # Linux (amd64)
-curl -sL https://github.com/fwartner/pnp/releases/latest/download/pnp_0.1.0_linux_amd64.tar.gz | tar xz
+curl -sL https://github.com/fwartner/pnp/releases/latest/download/pnp_linux_amd64.tar.gz | tar xz
 sudo mv pnp /usr/local/bin/
 ```
 
@@ -46,9 +46,12 @@ go install github.com/fwartner/pnp@latest
 
 ## Prerequisites
 
+Run `pnp doctor` to check all prerequisites at once.
+
 - **[gh CLI](https://cli.github.com/)** — authenticated (`gh auth login`) — for GitHub repo creation and PRs
 - **Git** — for interacting with the GitOps repository
-- **kubectl** or **argocd CLI** — for `pnp status` (optional)
+- **kubectl** — for `pnp status` and `pnp logs` (optional)
+- **Docker** — for local builds (optional)
 
 ## Quick start
 
@@ -70,9 +73,29 @@ defaults:
   domain: pixelandprocess.de
   imageRegistry: ghcr.io
   githubOrg: your-org
+scopes:
+  customer:
+    domain: customerdomain.de
+    githubOrg: customer-org
+  agency:
+    domain: pixelandprocess.de
+    githubOrg: pixelandprocess
 ```
 
-### 2. Deploy a project
+### 2. Scaffold a new project
+
+```bash
+pnp new laravel-web my-app
+```
+
+This creates a scope-prefixed project directory (e.g. `agency-my-app`) with:
+- Scaffold files for the chosen project type
+- `.cluster.yaml` with smart defaults
+- `Dockerfile` and `.dockerignore`
+- `.github/workflows/deploy.yml`
+- Initialized git repo with initial commit
+
+### 3. Deploy a project
 
 ```bash
 cd ~/projects/my-customer-app
@@ -88,7 +111,7 @@ That's it. The CLI will:
 - Push to `main` — ArgoCD auto-syncs the deployment
 - Save `.cluster.yaml` in your project for future updates
 
-### 3. Update after config changes
+### 4. Update after config changes
 
 Edit `.cluster.yaml`, then:
 
@@ -96,7 +119,7 @@ Edit `.cluster.yaml`, then:
 pnp update
 ```
 
-### 4. Tear it down
+### 5. Tear it down
 
 ```bash
 pnp destroy
@@ -104,24 +127,40 @@ pnp destroy
 
 ## Commands
 
+### `pnp new`
+
+Scaffold a new project with all deployment configuration.
+
+```bash
+pnp new <type> <name>
+pnp new laravel-web my-app        # creates agency-my-app/
+pnp new nextjs-static dashboard   # creates customer-dashboard/
+```
+
 ### `pnp deploy`
 
 Create a new deployment or redeploy an existing one.
 
 ```bash
-pnp deploy              # detect, wizard, deploy
-pnp deploy --pr         # create a PR instead of pushing to main
-pnp deploy --with-ci    # also generate .github/workflows/deploy.yml
-pnp deploy --skip-secrets  # skip creating secrets in Infisical
+pnp deploy                   # detect, wizard, deploy
+pnp deploy --pr              # create a PR instead of pushing to main
+pnp deploy --with-ci         # also generate .github/workflows/deploy.yml
+pnp deploy --advanced        # run the full advanced wizard with all options
+pnp deploy --with-previews   # generate preview environment workflow for PRs
 ```
 
 **What happens:**
 
 ```
-┌─────────────────┐    ┌───────────┐    ┌──────────┐    ┌────────┐    ┌─────────┐
-│ Detect project  │───>│  Wizard   │───>│ Render   │───>│ GitOps │───>│ ArgoCD  │
-│ type + git repo │    │ (confirm) │    │ manifests│    │  push  │    │  sync   │
-└─────────────────┘    └───────────┘    └──────────┘    └────────┘    └─────────┘
+┌─────────────┐   ┌──────────┐   ┌──────────┐   ┌────────┐   ┌─────────┐
+│ Pre-deploy  │──>│  Doctor   │──>│  Wizard  │──>│ Render │──>│ GitOps  │
+│   hooks     │   │  checks   │   │(confirm) │   │manifest│   │  push   │
+└─────────────┘   └──────────┘   └──────────┘   └────────┘   └─────────┘
+                                                                   │
+                                                              ┌────▼────┐
+                                                              │ ArgoCD  │
+                                                              │  sync   │
+                                                              └─────────┘
 ```
 
 ### `pnp update`
@@ -144,7 +183,7 @@ pnp destroy --pr    # create a PR for review
 
 ### `pnp status`
 
-Show the ArgoCD sync and health status of the current project.
+Show the ArgoCD sync and health status of the current project, including per-pod details and error explanations.
 
 ```bash
 pnp status
@@ -156,6 +195,65 @@ Environment: preview
 Domain:      https://my-customer-app.preview.pixelandprocess.de
 Sync:        Synced
 Health:      Healthy
+
+Pods:
+  NAME                              STATUS   RESTARTS   AGE
+  my-app-6d4f5b7c8-x2k9p           Running  0          2h
+  my-app-worker-7f8a9b1c2-m3n4p     Running  0          2h
+```
+
+### `pnp doctor`
+
+Check that all prerequisites are installed and configured.
+
+```bash
+pnp doctor
+```
+
+```
+  ✓  git: installed
+  ✓  gh: authenticated
+  ✓  docker: running
+  ✓  kubectl: configured
+  ✓  global config: ~/.pnp.yaml found
+  ✗  gitops repo: not cloned (run pnp init)
+```
+
+### `pnp list`
+
+Show all deployed applications from the GitOps repo.
+
+```bash
+pnp list
+```
+
+### `pnp logs`
+
+Stream logs from the running application pods.
+
+```bash
+pnp logs                # logs for current project
+pnp logs my-app         # logs for a specific app
+pnp logs --follow       # stream logs in real-time
+pnp logs --tail 100     # show last 100 lines
+```
+
+### `pnp env`
+
+Manage environment variables in `.cluster.yaml`.
+
+```bash
+pnp env list                        # show all env vars
+pnp env set DATABASE_URL=postgres:// # set a variable
+pnp env edit                        # open in $EDITOR
+```
+
+### `pnp rollback`
+
+Revert a deployment to a previous version via interactive commit selection.
+
+```bash
+pnp rollback
 ```
 
 ### `pnp init`
@@ -170,7 +268,6 @@ pnp init
 
 ```bash
 pnp version
-# pnp 0.1.0 (a1b2c3d)
 ```
 
 ## Supported project types
@@ -186,16 +283,92 @@ pnp version
 **DB dependency detection** (triggers `nextjs-fullstack` instead of `nextjs-static`):
 `prisma`, `@prisma/client`, `pg`, `postgres`, `typeorm`, `drizzle-orm`, `knex`, `sequelize`
 
+New types can be added via the internal registry (one Go file) or as external plugins.
+
+## Naming convention
+
+Projects use scope-prefixed names for consistent organization across multi-tenant environments:
+
+```
+<scope>-<name>
+```
+
+| Scope | Example | Use case |
+|-------|---------|----------|
+| `customer` | `customer-acme-corp` | Client projects |
+| `private` | `private-internal-tool` | Internal tools |
+| `agency` | `agency-pixel-process` | Pixel & Process projects |
+
+The scope determines default GitHub org, domain, repo visibility, and Infisical project — all configurable per scope in `~/.pnp.yaml`.
+
+## Plugin system
+
+Third-party plugins extend pnp with new project types, CLI commands, and deploy hooks.
+
+### Plugin directory structure
+
+```
+~/.pnp/plugins/
+└── django/
+    ├── plugin.yaml          # manifest
+    ├── django-type           # binary for project type
+    └── pnp-django-lint       # binary for custom command
+```
+
+### Plugin manifest (`plugin.yaml`)
+
+```yaml
+name: django
+version: 0.1.0
+provides:
+  types:
+    - name: django
+      binary: ./django-type
+  commands:
+    - name: lint
+      binary: ./pnp-django-lint
+      description: "Run Django linting"
+  hooks:
+    - event: pre-deploy
+      binary: ./pre-deploy-check
+```
+
+### Plugin protocol
+
+**Type plugins** are binaries called with subcommands, communicating via stdin/stdout JSON:
+
+| Subcommand | Input | Output |
+|-----------|-------|--------|
+| `info` | — | `{ "name": "django", "displayName": "Django", "chartPath": "charts/django", "hasDatabase": true, "defaults": {...} }` |
+| `detect <dir>` | — | `{ "confidence": "high" }` |
+| `values-template` | — | Template string (stdout) |
+| `application-template` | — | Template string (stdout) |
+| `dockerfile` | ProjectConfig (stdin) | Dockerfile content (stdout) |
+| `dockerignore` | — | Content (stdout) |
+| `scaffold` | ScaffoldData (stdin) | `{ "path": "content" }` |
+
+**Command plugins** receive project/global config as environment variables and pass through user args.
+
+**Hook plugins** receive event JSON on stdin. Exit 0 to continue, non-zero to abort.
+
+### Hook events
+
+| Event | When | Abort on failure |
+|-------|------|-----------------|
+| `pre-deploy` | Before deploy steps run | Yes |
+| `post-deploy` | After successful deploy | No (warning only) |
+
 ## Project config (`.cluster.yaml`)
 
 Saved in your project directory after the first deploy. Editable for `pnp update`.
 
 ```yaml
-name: my-customer-app
+name: agency-my-customer-app
 type: laravel-web
+scope: agency
 environment: preview
-domain: my-customer-app.preview.pixelandprocess.de
-image: ghcr.io/your-org/my-customer-app
+domain: agency-my-customer-app.preview.pixelandprocess.de
+image: ghcr.io/pixelandprocess/agency-my-customer-app
 database:
   enabled: true
   size: 5Gi
@@ -217,8 +390,8 @@ ci:
 
 | Environment | Domain pattern | Example |
 |-------------|---------------|---------|
-| Preview | `<name>.preview.pixelandprocess.de` | `acme.preview.pixelandprocess.de` |
-| Staging | `<name>.staging.pixelandprocess.de` | `acme.staging.pixelandprocess.de` |
+| Preview | `<name>.preview.<scope-domain>` | `agency-acme.preview.pixelandprocess.de` |
+| Staging | `<name>.staging.<scope-domain>` | `agency-acme.staging.pixelandprocess.de` |
 | Production | Custom (set in wizard) | `acme-corp.de` |
 
 ## Infrastructure stack
@@ -239,7 +412,7 @@ pnp generates manifests for an opinionated Kubernetes stack:
 When you run `pnp deploy`, the following resources are generated in the GitOps repo:
 
 ```
-apps/previews/my-customer-app/
+apps/<scope>/<environment>/<name>/
 ├── Chart.yaml                       # Helm chart metadata
 ├── values.yaml                      # Image, domain, DB config
 └── templates/
@@ -256,14 +429,14 @@ If you run `pnp deploy` in a directory without a git repository or without a Git
 
 ```
 ? No git repository found. Create a GitHub repository? Yes
-? Repository name your-org/my-project
+? Repository name pixelandprocess/agency-my-project
 ? Visibility Private
 
 Creating GitHub repository...
-Repository created: https://github.com/your-org/my-project
+Repository created: https://github.com/pixelandprocess/agency-my-project
 ```
 
-This requires the `gh` CLI to be installed and authenticated.
+This requires the `gh` CLI to be installed and authenticated. The default org and visibility are determined by the project scope.
 
 ## CI/CD pipeline generation
 
@@ -279,25 +452,50 @@ This creates `.github/workflows/deploy.yml` that:
 3. Builds and pushes a Docker image to GHCR
 4. Tags with both `latest` and the commit SHA
 
+Use `--with-previews` to also generate a preview environment workflow that deploys on every PR.
+
 ## Architecture
 
 ```
 cmd/                    # Cobra commands
-  deploy.go             # Main deploy flow
+  deploy.go             # Main deploy flow with progress tracker
+  new.go                # Project scaffolding
   update.go             # Re-render + push
   destroy.go            # Remove from GitOps
-  status.go             # ArgoCD status check
+  status.go             # ArgoCD status check + pod details
+  doctor.go             # Prerequisites checker
+  list.go               # List deployed apps
+  logs.go               # Stream pod logs
+  rollback.go           # Revert deployments
+  env.go                # Manage env vars
   init.go               # Global config wizard
   helpers.go            # Shared TemplateData builder
 internal/
-  config/               # ~/.pnp.yaml and .cluster.yaml
+  types/                # Project type registry + built-in types
+    types.go            # ProjectType interface
+    registry.go         # Register, Get, All, Names, Detect
+    laravel_web.go      # Laravel web implementation
+    laravel_api.go      # Laravel API implementation
+    nextjs_fullstack.go # Next.js fullstack implementation
+    nextjs_static.go    # Next.js static implementation
+    strapi.go           # Strapi implementation
+  plugin/               # External plugin system
+    manifest.go         # plugin.yaml parsing
+    loader.go           # Plugin discovery (~/.pnp/plugins/)
+    external_type.go    # ProjectType adapter for plugin binaries
+    hooks.go            # Hook registry and runner
+    command.go          # Plugin command registration
+  config/               # ~/.pnp.yaml, .cluster.yaml, naming helpers
   detect/               # Project type auto-detection
   wizard/               # Interactive TUI (charmbracelet/huh)
   templates/            # Manifest rendering (Go text/template)
   gitops/               # Git operations (clone, commit, push, PR)
   infisical/            # Infisical API client
   gh/                   # GitHub repo creation via gh CLI
-  ci/                   # GitHub Actions workflow generation
+  ci/                   # GitHub Actions workflow + Dockerfile generation
+  doctor/               # Prerequisites checker
+  kube/                 # kubectl wrapper
+  progress/             # Step tracker with spinner animation
 ```
 
 ## Development
@@ -317,12 +515,32 @@ go test ./...
 ./pnp version
 ```
 
+### Adding a new project type
+
+Create a single file in `internal/types/` implementing the `ProjectType` interface with an `init()` function that calls `Register()`:
+
+```go
+package types
+
+func init() {
+    Register(&MyType{})
+}
+
+type MyType struct{}
+
+func (m *MyType) Name() string        { return "my-type" }
+func (m *MyType) DisplayName() string { return "My Type" }
+// ... implement remaining interface methods
+```
+
+No other files need to be modified — the registry picks it up automatically.
+
 ### Releasing
 
 Releases are automated via GitHub Actions + [GoReleaser](https://goreleaser.com/). Tag and push:
 
 ```bash
-git tag v0.2.0
+git tag v1.4.0
 git push --tags
 ```
 
