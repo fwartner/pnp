@@ -82,7 +82,7 @@ COPY . .
 RUN npm run build
 
 # ---- Production image ----
-FROM ghcr.io/fwartner/pnp/laravel-fpm:latest
+FROM ghcr.io/pixel-process-ug/laravel-base:latest
 
 WORKDIR /app
 

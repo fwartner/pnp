@@ -95,6 +95,7 @@ func defaultGlobalConfig() GlobalConfig {
 		Defaults: DefaultsConfig{
 			Domain:        "pixelandprocess.de",
 			ImageRegistry: "ghcr.io",
+			GithubOrg:     "Pixel-Process-UG",
 		},
 	}
 }

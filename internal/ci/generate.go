@@ -77,7 +77,7 @@ jobs:
           cd gitops
           TAG="${{ "{{" }} needs.build.outputs.image-tag {{ "}}" }}"
           # Search across all scope directories
-          for VALUES_FILE in "apps/customer/{{ .AppName }}/values.yaml" "apps/agency/{{ .AppName }}/values.yaml" "apps/previews/{{ .AppName }}/values.yaml"; do
+          for VALUES_FILE in "apps/customers/{{ .AppName }}/values.yaml" "apps/agency/{{ .AppName }}/values.yaml" "apps/previews/{{ .AppName }}/values.yaml"; do
             if [ -f "$VALUES_FILE" ]; then
               sed -i "s|tag:.*|tag: ${TAG}|" "$VALUES_FILE"
               git add "$VALUES_FILE"

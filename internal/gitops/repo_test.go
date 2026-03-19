@@ -21,7 +21,7 @@ func TestAppPath(t *testing.T) {
 		{"myapp", "Preview", "agency", "/tmp/gitops-repo/apps/previews/myapp"},
 		{"myapp", "staging", "customer", "/tmp/gitops-repo/apps/previews/myapp"},
 		{"myapp", "Staging", "agency", "/tmp/gitops-repo/apps/previews/myapp"},
-		{"myapp", "production", "customer", "/tmp/gitops-repo/apps/customer/myapp"},
+		{"myapp", "production", "customer", "/tmp/gitops-repo/apps/customers/myapp"},
 		{"myapp", "Production", "agency", "/tmp/gitops-repo/apps/agency/myapp"},
 		{"myapp", "production", "private", "/tmp/gitops-repo/apps/agency/myapp"},
 	}
@@ -429,14 +429,14 @@ func TestAppPath_AllEnvironments(t *testing.T) {
 		{"staging lowercase", "myapp", "staging", "customer", "/tmp/test-repo/apps/previews/myapp"},
 		{"staging mixed case", "myapp", "Staging", "agency", "/tmp/test-repo/apps/previews/myapp"},
 		{"staging uppercase", "myapp", "STAGING", "customer", "/tmp/test-repo/apps/previews/myapp"},
-		{"production customer", "myapp", "production", "customer", "/tmp/test-repo/apps/customer/myapp"},
+		{"production customer", "myapp", "production", "customer", "/tmp/test-repo/apps/customers/myapp"},
 		{"production agency", "myapp", "production", "agency", "/tmp/test-repo/apps/agency/myapp"},
 		{"production private", "myapp", "production", "private", "/tmp/test-repo/apps/agency/myapp"},
-		{"Production customer", "myapp", "Production", "customer", "/tmp/test-repo/apps/customer/myapp"},
+		{"Production customer", "myapp", "Production", "customer", "/tmp/test-repo/apps/customers/myapp"},
 		{"PRODUCTION agency", "myapp", "PRODUCTION", "agency", "/tmp/test-repo/apps/agency/myapp"},
-		{"empty env customer", "myapp", "", "customer", "/tmp/test-repo/apps/customer/myapp"},
+		{"empty env customer", "myapp", "", "customer", "/tmp/test-repo/apps/customers/myapp"},
 		{"empty env agency", "myapp", "", "agency", "/tmp/test-repo/apps/agency/myapp"},
-		{"other env customer", "myapp", "development", "customer", "/tmp/test-repo/apps/customer/myapp"},
+		{"other env customer", "myapp", "development", "customer", "/tmp/test-repo/apps/customers/myapp"},
 	}
 
 	for _, tt := range tests {
@@ -452,9 +452,9 @@ func TestAppPath_AllEnvironments(t *testing.T) {
 func TestAppPath_ScopeCategories(t *testing.T) {
 	repo := NewRepo("/tmp/test-repo")
 
-	// Customer projects go to apps/customer/
+	// Customer projects go to apps/customers/
 	got := repo.AppPath("client-site", "production", "customer")
-	if got != "/tmp/test-repo/apps/customer/client-site" {
+	if got != "/tmp/test-repo/apps/customers/client-site" {
 		t.Errorf("customer scope: got %q", got)
 	}
 

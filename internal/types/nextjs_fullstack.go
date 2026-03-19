@@ -127,7 +127,7 @@ spec:
       - CreateNamespace=true
 `
 
-const nextjsDockerfile = `FROM ghcr.io/fwartner/pnp/nextjs:latest AS base
+const nextjsDockerfile = `FROM ghcr.io/pixel-process-ug/nextjs-base:latest AS base
 
 FROM base AS deps
 WORKDIR /app

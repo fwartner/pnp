@@ -39,7 +39,7 @@ func TestGenerateLaravelWorkflow(t *testing.T) {
 		"cache-from: type=gha",
 		"org/gitops",
 		"GITOPS_TOKEN",
-		"apps/customer/laravel-app/values.yaml",
+		"apps/customers/laravel-app/values.yaml",
 		"apps/agency/laravel-app/values.yaml",
 		"apps/previews/laravel-app/values.yaml",
 		"deploy(laravel-app)",
@@ -98,9 +98,9 @@ func TestExtractGitHubRepo(t *testing.T) {
 		want  string
 	}{
 		{"https://github.com/org/gitops.git", "org/gitops"},
-		{"https://github.com/fwartner/pixelandprocess-gitops.git", "fwartner/pixelandprocess-gitops"},
+		{"https://github.com/Pixel-Process-UG/pixelandprocess-gitops.git", "Pixel-Process-UG/pixelandprocess-gitops"},
 		{"git@github.com:org/gitops.git", "org/gitops"},
-		{"git@github.com:fwartner/pixelandprocess-gitops.git", "fwartner/pixelandprocess-gitops"},
+		{"git@github.com:Pixel-Process-UG/pixelandprocess-gitops.git", "Pixel-Process-UG/pixelandprocess-gitops"},
 		{"https://github.com/org/gitops", "org/gitops"},
 		{"something-else", "something-else"},
 	}
@@ -126,7 +126,7 @@ func TestGenerateDockerfile_Laravel(t *testing.T) {
 	content := string(data)
 
 	for _, want := range []string{
-		"ghcr.io/fwartner/pnp/laravel-fpm:latest",
+		"ghcr.io/pixel-process-ug/laravel-base:latest",
 		"composer",
 		"npm run build",
 		"storage/framework",
@@ -225,7 +225,7 @@ func TestGenerateDockerfile_Nextjs(t *testing.T) {
 	content := string(data)
 
 	for _, want := range []string{
-		"ghcr.io/fwartner/pnp/nextjs:latest",
+		"ghcr.io/pixel-process-ug/nextjs-base:latest",
 		".next/standalone",
 		".next/static",
 		"server.js",

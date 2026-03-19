@@ -62,7 +62,7 @@ jobs:
 
           # Copy from main app as template and override values
           MAIN_DIR=""
-          for d in apps/customer/{{ .AppName }} apps/agency/{{ .AppName }} apps/previews/{{ .AppName }}; do
+          for d in apps/customers/{{ .AppName }} apps/agency/{{ .AppName }} apps/previews/{{ .AppName }}; do
             if [ -d "$d" ]; then
               MAIN_DIR="$d"
               break

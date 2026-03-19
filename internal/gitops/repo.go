@@ -23,7 +23,7 @@ func NewRepo(path string) *Repo {
 // AppPath returns the filesystem path where an application's manifests live.
 // Uses scope and environment to determine the correct subdirectory:
 //   - preview/staging → apps/previews/{name}
-//   - customer scope  → apps/customer/{name}
+//   - customer scope  → apps/customers/{name}
 //   - agency scope    → apps/agency/{name}
 //   - private scope   → apps/agency/{name}
 func (r *Repo) AppPath(name, environment, scope string) string {
@@ -33,7 +33,7 @@ func (r *Repo) AppPath(name, environment, scope string) string {
 	}
 	switch strings.ToLower(scope) {
 	case "customer":
-		return filepath.Join(r.Path, "apps", "customer", name)
+		return filepath.Join(r.Path, "apps", "customers", name)
 	default:
 		return filepath.Join(r.Path, "apps", "agency", name)
 	}
@@ -153,7 +153,7 @@ func (r *Repo) ListApps() ([]AppInfo, error) {
 		scope string
 		env   string
 	}{
-		{"apps/customer", "customer", "production"},
+		{"apps/customers", "customer", "production"},
 		{"apps/agency", "agency", "production"},
 		{"apps/previews", "previews", "preview"},
 	}
